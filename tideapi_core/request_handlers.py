@@ -2,9 +2,10 @@ import uuid
 
 from typing import TYPE_CHECKING
 from fastapi import Request
-
+from threading import Lock
 from pathlib import Path
 from tide_tooling import TIDE
+from fastapi.concurrency import run_in_threadpool
 from tideapi_core.app_context import (
     TRACES, 
     BUNDLES, 
@@ -26,30 +27,32 @@ from tideapi_core.exceptions import (
 
 # Secrets + Pre-init
 ROOT = Path(__file__).parents[1] / "bundles"
-
+REGISTER_LOCK = Lock()
 # REGISTER
 
 def register_trace(bundle_name: str) -> str:
     if isinstance(bundle_name, str):
         path = validate_bundle_name(ROOT, bundle_name)
-        bundle_id = register_bundle_name(BUNDLES, bundle_name)
-        trace = TIDE.from_bundle(path)
-        trace_id = uuid.uuid4().hex
+        with REGISTER_LOCK:
+            if bundle_name in REGISTERED_BUNDLES:
+                return REGISTERED_BUNDLES[bundle_name]
 
-        if bundle_name in REGISTERED_BUNDLES:
-            return REGISTERED_BUNDLES[bundle_name]
-        
-        TRACES[trace_id] = {
-            "trace": trace,
-            "bundle_name": bundle_name,
-            "bundle_id": bundle_id,
-        }
+            trace = TIDE.from_bundle(path)
+            bundle_id = register_bundle_name(BUNDLES, bundle_name)
+            trace_id = uuid.uuid4().hex
+            
+            TRACES[trace_id] = {
+                "trace": trace,
+                "bundle_name": bundle_name,
+                "bundle_id": bundle_id,
+            }
 
-        REGISTERED_BUNDLES[bundle_name] = trace_id
-
+            REGISTERED_BUNDLES[bundle_name] = trace_id
+            
+            return trace_id
     else:
         raise DataValidationError('`bundle_name` must be a str identifier')
-    return trace_id
+    
 
 
 # SHOW
@@ -104,7 +107,7 @@ def initialise_traces_from_bundles():
 
 async def initialise_traces_on_docs_load(request: Request, call_next):
     if request.url.path == "/docs":
-        initialise_traces_from_bundles() 
+        await run_in_threadpool(initialise_traces_from_bundles) 
 
     return await call_next(request)
 
