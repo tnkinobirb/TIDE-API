@@ -21,6 +21,7 @@ from tideapi_core.helpers.native import (
 )
 from tideapi_core.exceptions import (
     TraceLookupError,
+    DataValidationError
 )
 
 # Secrets + Pre-init
@@ -35,6 +36,9 @@ def register_trace(bundle_name: str) -> str:
         trace = TIDE.from_bundle(path)
         trace_id = uuid.uuid4().hex
 
+        if bundle_name in REGISTERED_BUNDLES:
+            return REGISTERED_BUNDLES[bundle_name]
+        
         TRACES[trace_id] = {
             "trace": trace,
             "bundle_name": bundle_name,
@@ -54,7 +58,7 @@ def available_bundles():
     bundles = []
     if ROOT.exists():
         for item in ROOT.iterdir():
-            if item.is_file():
+            if item.is_file() and item.suffix.lower() == ".json":
                 bundles.append(item.name)
 
     return {"result": bundles}

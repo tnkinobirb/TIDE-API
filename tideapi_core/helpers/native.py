@@ -38,7 +38,7 @@ def validate_bundle_name(ROOT: Path, bundle_name: str) -> Path:
         raise DataValidationError(f"Invalid bundle name {bundle_name}")
 
     if not path.is_file():
-        raise DataValidationError(f"Bundle not found{bundle_name}")
+        raise APILookupError(f"Bundle not found{bundle_name}")
 
     return path
 
