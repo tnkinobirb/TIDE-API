@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, HTTPException
 from tide_tooling import TIDE, Trace
 from pathlib import Path
@@ -16,7 +17,7 @@ def list_traces():
 def list_bundles():
     return list(trace["bundle_name"] for trace in TRACES.values())
 
-def bundle_by_trace_id(trace_id:str):
+def bundle_by_trace_id(trace_id: str):
     trace = get_trace(trace_id)
     return trace["bundle_name"]
 
@@ -35,22 +36,20 @@ def resolve_bundle(bundle_name: str) -> Path:
 def http_exec(status_code: int, detail: str) -> HTTPException:
     return HTTPException(status_code=status_code, detail=detail)
 
-def get_bundle_name(trace_id: str) -> Trace:
-    trace = get_trace(trace_id)  
-    if trace is None:
-        return trace
-    return trace['bundle_name']
+def get_bundle_name(trace_id: str) -> str:
+    trace = get_trace(trace_id)
+    return trace["bundle_name"]
 
-def get_trace(trace_id: str) -> Trace:
+def get_trace(trace_id: str) -> dict:
     trace = TRACES.get(trace_id)
     if trace is None:
-        return trace
-    return trace['trace']
+        raise http_exec(status_code=404, detail=f"Unknown trace: {trace_id}")
+    return trace
 
 def register_bundle_name(bundle_name: str) -> str:
     if isinstance(bundle_name, str):
         bundle_id = uuid.uuid4().hex
-        BUNDLES[bundle_id] = bundle_name          
+        BUNDLES[bundle_id] = bundle_name
     else:
         raise TypeError('bundle_name must be a str identifier.')
     return bundle_id
@@ -63,12 +62,16 @@ def register_trace(bundle_name: str) -> str:
         bundle_id = register_bundle_name(bundle_name)
         trace = TIDE.from_bundle(ROOT / BUNDLES[bundle_id])
         trace_id = uuid.uuid4().hex
-        
-        TRACES[trace_id] = {"trace":trace, "bundle_name": bundle_name}        
+
+        TRACES[trace_id] = {
+            "trace": trace,
+            "bundle_name": bundle_name
+        }
 
     else:
         raise http_exec(status_code=500, detail='bundle_name must be a str identifier.')
-    return trace_id 
+    return trace_id
+
 
 # SHOW
 
@@ -84,36 +87,45 @@ def available_bundles():
 
 @app.get('/show/traces')
 def available_traces():
-    return {'result': {trace_id: get_bundle_name(trace_id) for trace_id in list_traces()}}
+    return {
+        'result': {
+            trace_id: get_bundle_name(trace_id)
+            for trace_id in list_traces()
+        }
+    }
 
 @app.get('/show/traces/{trace_id}')
-def trace(trace_id:str):
-    trace = get_trace(trace_id)
+def trace(trace_id: str):
+    trace = get_trace(trace_id)["trace"]
     return {'result': trace.show(colour=False)}
+
 
 # GET
 
 @app.get('/get/traces/{trace_id}/bundle_name')
-def bundle_name_by_trace_id(trace_id:str):
-    get_trace(trace_id)
-    return {'result': str(get_bundle_name(trace_id))}                
+def bundle_name_by_trace_id(trace_id: str):
+    return {'result': str(get_bundle_name(trace_id))}
+
 
 # INSPECT / DEFAULT LOOKUP BEHAVIOUR
 
 @app.get('/traces/{trace_id}/refs/{ref}')
 def inspect_ref(trace_id: str, ref: str):
-    trace = get_trace(trace_id)
-    
+    trace = get_trace(trace_id)["trace"]
+
     inspected = trace.inspect_ref(ref).to_dict()
     if inspected["exists"] is False:
-        raise http_exec(status_code=404, detail=f"Ref {ref} not found in trace {trace_id}")
+        raise http_exec(
+            status_code=404,
+            detail=f"Ref {ref} not found in trace {trace_id}"
+        )
     return {"result": inspected}
 
 
 # DEV
+
 @app.post('/dev/quick_init')
 def quick_init():
     for bundle_name in available_bundles()['result']:
         register_trace(bundle_name)
     return list(TRACES)
-        
