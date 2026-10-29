@@ -36,11 +36,15 @@ def http_exec(status_code: int, detail: str) -> HTTPException:
     return HTTPException(status_code=status_code, detail=detail)
 
 def get_bundle_name(trace_id: str) -> Trace:
-    trace = get_trace(trace_id)    
+    trace = get_trace(trace_id)  
+    if trace is None:
+        return trace
     return trace['bundle_name']
 
 def get_trace(trace_id: str) -> Trace:
-    trace = get_trace(trace_id)
+    trace = TRACES.get(trace_id)
+    if trace is None:
+        return trace
     return trace['trace']
 
 def register_bundle_name(bundle_name: str) -> str:
