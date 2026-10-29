@@ -1,0 +1,3 @@
+BUNDLES = {}
+REGISTERED_BUNDLES = {}
+TRACES = {}
