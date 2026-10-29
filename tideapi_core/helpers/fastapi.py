@@ -1,9 +1,5 @@
 from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from fastapi import APIRouter
-
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
 
 def register_middleware_handlers(app: FastAPI, MIDDLEWARE_HANDLERS: dict) -> None:
     for handler in MIDDLEWARE_HANDLERS:

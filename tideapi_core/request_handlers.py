@@ -1,9 +1,7 @@
 import uuid
 
 from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from fastapi import Request
+from fastapi import Request
 
 from pathlib import Path
 from tide_tooling import TIDE
@@ -18,6 +16,8 @@ from tideapi_core.helpers.native import (
     get_bundle_name,
     is_bundle_registered,
     register_bundle_name, 
+    validate_bundle_name,
+
 )
 from tideapi_core.exceptions import (
     TraceLookupError,
@@ -30,13 +30,15 @@ ROOT = Path(__file__).parents[1] / "bundles"
 
 def register_trace(bundle_name: str) -> str:
     if isinstance(bundle_name, str):
+        path = validate_bundle_name(ROOT, bundle_name)
         bundle_id = register_bundle_name(BUNDLES, bundle_name)
-        trace = TIDE.from_bundle(ROOT / BUNDLES[bundle_id])
+        trace = TIDE.from_bundle(path)
         trace_id = uuid.uuid4().hex
 
         TRACES[trace_id] = {
             "trace": trace,
-            "bundle_name": bundle_name
+            "bundle_name": bundle_name,
+            "bundle_id": bundle_id,
         }
 
         REGISTERED_BUNDLES[bundle_name] = trace_id
@@ -65,7 +67,7 @@ def available_traces():
         }
     }
 
-def trace(trace_id: str):
+def show_trace(trace_id: str):
     trace = get_trace(TRACES, trace_id)["trace"]
     return {'result': trace.show(colour=False)}
 
@@ -105,14 +107,18 @@ async def initialise_traces_on_docs_load(request: Request, call_next):
 
 
 ENDPOINT_HANDLERS = [
-    {"methods": ["GET"], "path": "/show/bundles", "function": available_bundles},
-    {"methods": ["GET"], "path": "/show/traces", "function": available_traces},
-    {"methods": ["GET"], "path": "/show/traces/{trace_id}", "function": trace},
-    {"methods": ["GET"], "path": "/get/traces/{trace_id}/bundle_name", "function": bundle_name_by_trace_id},
-    {"methods": ["GET"], "path": "/traces/{trace_id}/refs/{ref}", "function": inspect_ref},
-    {"methods": ["POST"],"path": "/dev/initialise_traces", "function": initialise_traces_from_bundles},
+    
+    {"methods": ["GET"], "function": show_trace,                        "path": "/show/traces/{trace_id}"},
+    {"methods": ["GET"], "function": inspect_ref,                       "path": "/traces/{trace_id}/ref"},
+    {"methods": ["GET"], "function": available_traces,                  "path": "/show/traces"},
+    {"methods": ["GET"], "function": available_bundles,                 "path": "/show/bundles"},
+    {"methods": ["GET"], "function": bundle_name_by_trace_id,           "path": "/get/traces/{trace_id}/bundle_name"},
+    
+    {"methods": ["POST"],"function": register_trace,                    "path": "/register/trace/{bundle_name}"},
+    {"methods": ["POST"],"function": initialise_traces_from_bundles,    "path": "/dev/initialise_traces"},
+    
 ]
 
 MIDDLEWARE_HANDLERS = [
-    {"type": ["http"], "function": initialise_traces_on_docs_load}
+    {"type": "http", "function": initialise_traces_on_docs_load}
 ]
