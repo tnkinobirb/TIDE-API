@@ -16,7 +16,7 @@ def list_bundles(TRACES: dict) -> list:
 def is_bundle_registered(REGISTERED_BUNDLES: dict, bundle_name:str) -> bool:
     return bundle_name in REGISTERED_BUNDLES
 
-def register_bundle_name(BUNDLES:dict, bundle_name: str) -> str:
+def register_bundle_name(BUNDLES: dict, bundle_name: str) -> str:
     if isinstance(bundle_name, str):
         bundle_id = uuid.uuid4().hex
         BUNDLES[bundle_id] = bundle_name

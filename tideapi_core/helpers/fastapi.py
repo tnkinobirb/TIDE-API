@@ -5,9 +5,9 @@ def register_middleware_handlers(app: FastAPI, MIDDLEWARE_HANDLERS: dict) -> Non
     for handler in MIDDLEWARE_HANDLERS:
         app.middleware(handler['type'])(handler['function'])
     
-def register_endpoint_handlers(api_router: APIRouter, ENDPOINT_HANDLERS: list[dict]) -> None:
+def register_endpoint_handlers(app: FastAPI, ENDPOINT_HANDLERS: list[dict]) -> None:
     for handler in ENDPOINT_HANDLERS:
-        api_router.add_api_route(
+        app.add_api_route(
             path=handler['path'], 
             endpoint=handler['function'], 
             methods=handler['methods']
