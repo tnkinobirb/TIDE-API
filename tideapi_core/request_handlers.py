@@ -1,7 +1,8 @@
 import uuid
 
 from typing import TYPE_CHECKING
-from fastapi import Request
+from fastapi import Request, status
+from fastapi.responses import RedirectResponse
 from threading import Lock
 from pathlib import Path
 from tide_tooling import TIDE
@@ -28,6 +29,11 @@ from tideapi_core.exceptions import (
 # Secrets + Pre-init
 ROOT = Path(__file__).parents[1] / "bundles"
 REGISTER_LOCK = Lock()
+
+# Redirect
+def redirect_to_docs():
+    return RedirectResponse(url='docs/', status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
 # REGISTER
 
 def register_trace(bundle_name: str) -> str:
@@ -76,7 +82,7 @@ def available_traces():
 
 def show_trace(trace_id: str):
     trace = get_trace(TRACES, trace_id)["trace"]
-    return {'result': trace.show(colour=False)}
+    return {'result': trace.to_dict()}
 
 # GET
 
@@ -93,6 +99,25 @@ def inspect_ref(trace_id: str, ref: str):
         raise TraceLookupError(f'Reference {ref} was not found in trace {trace_id}')
     
     return {"result": inspected}
+
+def inspect_exec(trace_id: str, ref: int):
+    trace = get_trace(TRACES, trace_id)["trace"]
+
+    inspected = trace.inspect(ref, kind='seq_id').to_dict()
+    if inspected["exists"] is False:
+        raise TraceLookupError(f'Exec {ref} was not found in trace {trace_id}')
+    
+    return {"result": inspected}
+
+def inspect_actor(trace_id: str, ref: str):
+    trace = get_trace(TRACES, trace_id)["trace"]
+
+    inspected = trace.inspect(ref, kind="actor").to_dict()
+    if inspected["exists"] is False:
+        raise TraceLookupError(f'Actor {ref} was not found in trace {trace_id}')
+    
+    return {"result": inspected}
+
 
 # DEV
 
@@ -113,14 +138,21 @@ async def initialise_traces_on_docs_load(request: Request, call_next):
 
 
 
-ENDPOINT_HANDLERS = [
-    
+INSPECT_ENDPOINTS = [
     {"methods": ["GET"], "function": show_trace,                        "path": "/show/traces/{trace_id}"},
     {"methods": ["GET"], "function": inspect_ref,                       "path": "/traces/{trace_id}/ref"},
+    {"methods": ["GET"], "function": inspect_exec,                      "path": "/traces/{trace_id}/exec"},
+    {"methods": ["GET"], "function": inspect_actor,                     "path": "/traces/{trace_id}/actor"},
+]
+
+ENDPOINT_HANDLERS = [
+    *INSPECT_ENDPOINTS,
+    
+    {"methods": ["GET"], "function": redirect_to_docs,                  "path": "/"},
     {"methods": ["GET"], "function": available_traces,                  "path": "/show/traces"},
     {"methods": ["GET"], "function": available_bundles,                 "path": "/show/bundles"},
     {"methods": ["GET"], "function": bundle_name_by_trace_id,           "path": "/get/traces/{trace_id}/bundle_name"},
-    
+
     {"methods": ["POST"],"function": register_trace,                    "path": "/register/trace/{bundle_name}"},
     {"methods": ["POST"],"function": initialise_traces_from_bundles,    "path": "/dev/initialise_traces"},
     
