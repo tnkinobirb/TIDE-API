@@ -17,7 +17,7 @@ from tideapi.helpers.fastapi import (
     register_middleware_handlers,
 )
 
-from tideapi.exceptions import (DataValidationError, APILookupError)
+from tideapi.exceptions import (DataValidationError, APILookupError, RouteAlreadyRegisteredError)
 
 class TestNativeHelpers:
 
@@ -100,8 +100,8 @@ class TestFastAPIHelpers:
 
         for idx, route in enumerate(registered_endpoints[-len(sample_endpoints):]):
             assert route.path == sample_endpoints[idx]['path']
-            assert route.methods == sample_endpoints[idx]['methods']
-            assert route.endpoint == sample_endpoints[idx]['function']
+            assert route.methods == set(sample_endpoints[idx]['methods'])
+            assert route.endpoint is sample_endpoints[idx]['function']
             response = client.get(route.path)
             assert response.status_code == 200
             assert response.json() == {'result':'example'}
@@ -116,12 +116,106 @@ class TestFastAPIHelpers:
         app.add_api_route(
             '/',
             lambda: {'result': 'example'},
-            methods={'GET'}
+            methods=['GET']
         )
 
         client = fastapi.testclient.TestClient(app)
         response = client.get('/')
         assert response.status_code == 200
-        assert response.headers['Test-Middleware'] == 'example'
+        assert response.headers['Test-Middleware_0'] == 'example_0'
+        assert response.headers['Test-Middleware_1'] == 'example_1'
 
+    def test_fastapi_app_initialisation_succeeds_with_no_handlers(self):    
+        app = initialise_fastapi_app()
+        app.add_api_route(
+            '/',
+            lambda: {'result': 'example'},
+            methods=['GET']
+        )
+        client = fastapi.testclient.TestClient(app)
+        response = client.get('/')
+        assert response.status_code == 200
+        assert response.json() == {'result':'example'}
 
+    def test_fastapi_app_initialisation(self, sample_endpoints, sample_middleware, sample_exception_handlers):
+        app = initialise_fastapi_app(ENDPOINT_HANDLERS=sample_endpoints, EXCEPTION_HANDLERS=sample_exception_handlers, MIDDLEWARE_HANDLERS=sample_middleware, )
+        client = fastapi.testclient.TestClient(app)
+
+        def raise_idx_exc(): raise IndexError()
+        def raise_val_exc(): raise ValueError()
+
+        for (path, exc, status, error) in [
+            ('/idx_exc', raise_idx_exc, 404, IndexError), 
+            ('/val_exc', raise_val_exc, 500, ValueError)
+        ]:
+             
+            app.add_api_route(   
+                path,
+                exc,
+                methods=['GET']
+            )
+
+            client = fastapi.testclient.TestClient(app)
+            response = client.request(method="GET", url=path)
+
+            assert response.status_code == status
+            assert response.json() == {"error": error.__name__}
+            assert response.headers['Test-Middleware_0'] == 'example_0'
+            assert response.headers['Test-Middleware_1'] == 'example_1'        
+        
+        for endpoint in sample_endpoints:
+            response = client.get(endpoint['path'])
+            assert response.status_code == 200
+            assert response.json() == {'result': 'example'}
+            assert response.headers['Test-Middleware_0'] == 'example_0'
+            assert response.headers['Test-Middleware_1'] == 'example_1'
+
+    def test_post_on_get_returns_405(self):
+        endpoint_handler = {   
+            'path':'/',
+            'function': lambda: {'result': 'example'},
+            'methods':['GET']
+        }
+        app = initialise_fastapi_app(ENDPOINT_HANDLERS=[endpoint_handler, ])
+        client = fastapi.testclient.TestClient(app)
+        response= client.request(method="POST", url='/')
+        assert response.status_code == 405
+
+    def test_fastapi_double_registration_raises(self):
+        endpoint_handler = {   
+            'path':'/',
+            'function': lambda: {'result': 'example'},
+            'methods': ['GET']
+        }
+        app = initialise_fastapi_app(ENDPOINT_HANDLERS=[endpoint_handler])
+        
+        pre_routes = list(app.routes)
+        pre_ware = list(app.user_middleware)
+        pre_exc = dict(app.exception_handlers)
+
+        with pytest.raises(RouteAlreadyRegisteredError):
+            register_endpoint_handlers(app, [endpoint_handler])
+
+        post_routes = list(app.routes)
+        post_ware = list(app.user_middleware)
+        post_exc = dict(app.exception_handlers)
+
+        assert pre_routes == post_routes
+        assert pre_ware == post_ware
+        assert pre_exc == post_exc
+        
+    def test_endpoint_registration_atomicity_on_tide_api_failure(self):
+        endpoint_handler = {   
+            'path':'/',
+            'function': lambda: {'result': 'example'},
+            'methods': ['GET']
+        }
+        app = initialise_fastapi_app()
+        pre_routes_len = len(app.routes)
+        with pytest.raises(RouteAlreadyRegisteredError):
+            register_endpoint_handlers(app, [endpoint_handler, endpoint_handler])
+        post_routes_len = len(app.routes)
+
+        assert pre_routes_len == post_routes_len
+
+    

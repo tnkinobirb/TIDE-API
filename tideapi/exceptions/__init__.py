@@ -3,4 +3,5 @@ from tideapi_core.exceptions import (
     APILookupError,
     DataValidationError,
     InternalExceptionError,
+    RouteAlreadyRegisteredError
 )

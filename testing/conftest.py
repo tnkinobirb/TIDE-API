@@ -1,5 +1,6 @@
 import pytest, uuid
-
+from fastapi import Request
+from fastapi.responses import JSONResponse
 template_bundle_name = "example.json"
 template_bundle_uuid4 = uuid.uuid4().hex
 template_trace_uuid4 = uuid.uuid4().hex
@@ -17,21 +18,6 @@ def sample_bundle_name():
 def sample_trace_uuid():
     return template_trace_uuid4
 
-async def sample_middleware_func(request, call_next):
-    response = await call_next(request) 
-    response.headers['Test-Middleware'] = 'example'
-    return response
-
-@pytest.fixture
-def sample_middleware():
-    return [
-        {
-        'type': 'http',
-        'function':  sample_middleware_func
-        },
-    ]
-
-
 @pytest.fixture
 def empty_bundle_dir(tmp_path):
     return tmp_path
@@ -46,7 +32,7 @@ def bundle_dir(tmp_path):
     return tmp_path
 
 @pytest.fixture
-def sample_bundles_dict():
+def sample_bundles_dict():  
     return {template_bundle_uuid4: template_bundle_name}
 
 @pytest.fixture
@@ -77,3 +63,50 @@ def sample_endpoints():
         'methods':{'GET', }
        }
     ]
+
+
+async def sample_middleware_func_0(request, call_next):
+    response = await call_next(request) 
+    response.headers['Test-Middleware_0'] = 'example_0'
+    return response
+
+async def sample_middleware_func_1(request, call_next):
+    response = await call_next(request) 
+    response.headers['Test-Middleware_1'] = 'example_1'
+    return response
+
+@pytest.fixture
+def sample_middleware():
+    return [
+        {
+        'type': 'http',
+        'function':  sample_middleware_func_0
+        },
+        {
+        'type': 'http',
+        'function':  sample_middleware_func_1
+        },
+    ]
+
+def handle_idx_exc(request: Request, exc: IndexError):
+    return JSONResponse(
+        status_code=404,
+        content={
+            "error": type(exc).__name__
+        },
+    )
+
+def handle_val_exc(request: Request, exc: ValueError):
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": type(exc).__name__,
+        }
+    )
+
+@pytest.fixture
+def sample_exception_handlers():
+    return {
+        IndexError: handle_idx_exc,
+        ValueError: handle_val_exc,
+    }

@@ -20,3 +20,7 @@ class InternalExceptionError(TIDEAPIException):
 class DataValidationError(TIDEAPIException):
     '''Use when data is deemed invalid for whatever reason'''
     pass
+
+class RouteAlreadyRegisteredError(TIDEAPIException):
+    '''Use when a FastAPI already exists on registration of it'''
+    pass
