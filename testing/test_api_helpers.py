@@ -1,5 +1,6 @@
 import pytest
 import fastapi
+import fastapi.testclient
 
 from tideapi.helpers.native import (
     list_bundles,
@@ -17,7 +18,7 @@ from tideapi.helpers.fastapi import (
 )
 
 from tideapi.exceptions import (DataValidationError, APILookupError)
-    
+
 class TestNativeHelpers:
 
     def test_valid_bundle_name(self, bundle_dir, sample_bundle_name):
@@ -86,4 +87,41 @@ class TestNativeHelpers:
         registered = is_bundle_registered(sample_registered_bundles_dict, name)
         assert type(registered) is bool
         assert registered is should_exist
+
+
+class TestFastAPIHelpers:
+    def test_endpoint_registration(self, sample_endpoints):
+        app = fastapi.FastAPI()
+        preregistered_endpoints = list(app.routes)
+        register_endpoint_handlers(app, sample_endpoints)
+        registered_endpoints = list(app.routes)
+        assert len(registered_endpoints)-len(preregistered_endpoints) == len(sample_endpoints)
+        client = fastapi.testclient.TestClient(app)
+
+        for idx, route in enumerate(registered_endpoints[-len(sample_endpoints):]):
+            assert route.path == sample_endpoints[idx]['path']
+            assert route.methods == sample_endpoints[idx]['methods']
+            assert route.endpoint == sample_endpoints[idx]['function']
+            response = client.get(route.path)
+            assert response.status_code == 200
+            assert response.json() == {'result':'example'}
+
+    def test_middleware_registration(self, sample_middleware):
+        app = fastapi.FastAPI()
+        preregistered_middleware = list(app.user_middleware)
+        register_middleware_handlers(app, sample_middleware)
+        registered_middleware = list(app.user_middleware)
+        assert len(registered_middleware)-len(preregistered_middleware) == len(sample_middleware)
+
+        app.add_api_route(
+            '/',
+            lambda: {'result': 'example'},
+            methods={'GET'}
+        )
+
+        client = fastapi.testclient.TestClient(app)
+        response = client.get('/')
+        assert response.status_code == 200
+        assert response.headers['Test-Middleware'] == 'example'
+
 

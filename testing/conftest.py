@@ -17,6 +17,19 @@ def sample_bundle_name():
 def sample_trace_uuid():
     return template_trace_uuid4
 
+async def sample_middleware_func(request, call_next):
+    response = await call_next(request) 
+    response.headers['Test-Middleware'] = 'example'
+    return response
+
+@pytest.fixture
+def sample_middleware():
+    return [
+        {
+        'type': 'http',
+        'function':  sample_middleware_func
+        },
+    ]
 
 
 @pytest.fixture
@@ -50,3 +63,17 @@ def sample_traces_dict():
         }
     }
 
+@pytest.fixture
+def sample_endpoints():
+    return [
+       {
+        'path':'/example',
+        'function':lambda:{'result': 'example'},
+        'methods':{'GET', }
+       },
+       {
+        'path':'/hello',
+        'function':lambda: {'result': 'example'},
+        'methods':{'GET', }
+       }
+    ]
