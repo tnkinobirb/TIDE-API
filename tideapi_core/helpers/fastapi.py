@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING
 from tideapi.exceptions import RouteAlreadyRegisteredError
 from fastapi import FastAPI, APIRouter
 
+
 def register_middleware_handlers(app: FastAPI, MIDDLEWARE_HANDLERS: dict) -> None:
     for handler in MIDDLEWARE_HANDLERS:
         app.middleware(handler['type'])(handler['function'])
@@ -37,4 +38,5 @@ def initialise_fastapi_app(
     register_middleware_handlers(app, MIDDLEWARE_HANDLERS)
     register_endpoint_handlers(app, ENDPOINT_HANDLERS)
     return app
+
 

@@ -1,6 +1,9 @@
 import pytest, uuid
+from tideapi.handlers import ENDPOINT_HANDLERS 
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from tide_tooling import TIDE, Trace
+
 template_bundle_name = "example.json"
 template_bundle_uuid4 = uuid.uuid4().hex
 template_trace_uuid4 = uuid.uuid4().hex
@@ -48,6 +51,8 @@ def sample_traces_dict():
             "bundle_id": template_bundle_uuid4,
         }
     }
+
+
 
 @pytest.fixture
 def sample_endpoints():
@@ -110,3 +115,38 @@ def sample_exception_handlers():
         IndexError: handle_idx_exc,
         ValueError: handle_val_exc,
     }
+
+@pytest.fixture
+def endpoints() -> dict:
+    return {endpoint['function'].__name__: endpoint for endpoint in ENDPOINT_HANDLERS}
+
+def trace():
+    tide = TIDE()
+    tide.event("A", writes={"AO": 'A'})
+    tide.event("B", reads=["AO"], writes={"BO": 'B'})
+    tide.event("C", reads=["BO"], writes={"CO": 'C'})
+    return tide.trace()
+    
+@pytest.fixture
+def tide_trace() -> Trace:
+    return trace()
+
+@pytest.fixture
+def sample_trace() -> dict:
+    return {
+        "trace":trace(),
+        "bundle_id":template_trace_uuid4,
+        "bundle_name":template_bundle_name    
+    }
+
+@pytest.fixture
+def sample_actor():
+    return "B"
+
+@pytest.fixture
+def sample_ref():
+    return "BO"
+
+@pytest.fixture
+def sample_exec():
+    return 2
