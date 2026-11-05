@@ -135,7 +135,7 @@ def tide_trace() -> Trace:
 def sample_trace() -> dict:
     return {
         "trace":trace(),
-        "bundle_id":template_trace_uuid4,
+        "bundle_id":template_bundle_uuid4,
         "bundle_name":template_bundle_name    
     }
 

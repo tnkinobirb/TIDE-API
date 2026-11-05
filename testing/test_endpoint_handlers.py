@@ -12,6 +12,7 @@ from tideapi.handlers import (
 )
 import json
 import pytest
+import inspect 
 import tideapi_core.request_handlers as request_handlers
 from tideapi.helpers.fastapi import initialise_fastapi_app
 from tideapi.exceptions import APILookupError, TraceLookupError
@@ -205,26 +206,34 @@ class TestAPIHelperEndpoints:
         # Test no traces
         with monkeypatch.context() as m:
             m.setattr(request_handlers, "TRACES", {})
-            client.get(url=f"/traces").status_code == 200
+            assert client.get(url=f"/traces").status_code == 200
 
-    def test_available_bundles(self, endpoints, monkeypatch):
-        endpoint, expected_result = assert_endpoint_configuration(
-            endpoints,
-            methods=['GET'],
-            function=available_bundles,
-            path='/bundles',
-        )
+    def test_available_bundles(self, endpoints, monkeypatch, tmp_path):
+        
+        with monkeypatch.context() as m:
+            m.setattr(request_handlers, "ROOT", tmp_path)    
+            (tmp_path / "example.json").write_text('{}')
 
-        client, _ = endpoint_tester(
-            endpoint=endpoint,
-            status_code=200,
-            expected_result=expected_result,
-        )
+            endpoint, expected_result = assert_endpoint_configuration(
+                endpoints,
+                methods=['GET'],
+                function=available_bundles,
+                path='/bundles',
+            )
+            
+            client, _ = endpoint_tester(
+                endpoint=endpoint,
+                status_code=200,
+                expected_result=expected_result,
+            )
+
+        (tmp_path / "example.json").unlink()
+        assert not any(tmp_path.iterdir())
 
         # Test no bundles
         with monkeypatch.context() as m:
-            m.setattr(request_handlers, "BUNDLES", {})
-            client.get(url=f"/bundles").status_code == 200
+            m.setattr(request_handlers, "ROOT", tmp_path)
+            assert client.get(url=f"/bundles").status_code == 200
 
     def test_bundle_name_by_trace_id(
         self, endpoints, sample_trace_uuid
@@ -274,9 +283,9 @@ class TestAPIHelperEndpoints:
             else:
                 function(trace_id=UNKNOWN_STR, ref=ref)
 
-    @pytest.mark.parametrize("endpoint", INSPECT_ENDPOINTS)
+    @pytest.mark.parametrize("endpoint", [endpoint for endpoint in INSPECT_ENDPOINTS if len(inspect.signature(endpoint['function']).parameters) > 1])
     def test_inspect_endpoints_raises_trace_lookup_error_on_unknown_ref(self, sample_trace_uuid, endpoint):
-        import inspect 
+        
         
         function = endpoint['function']
         parameters = inspect.signature(function).parameters
@@ -293,8 +302,8 @@ class TestAPIHelperEndpoints:
             else:
                 raise RuntimeError("Invalid input signature type for inspection endpoint")
         
-        if not len(parameters) == 1:
-            with pytest.raises(TraceLookupError):
-                function(**replace_params)
+    
+        with pytest.raises(TraceLookupError):
+            function(**replace_params)
             
     
