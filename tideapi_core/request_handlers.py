@@ -37,12 +37,12 @@ def redirect_to_docs():
 
 # REGISTER
 
-def register_trace(bundle_name: str) -> str:
+def register_trace(bundle_name: str) -> dict[str, str]:
     if isinstance(bundle_name, str):
         path = validate_bundle_name(ROOT, bundle_name)
         with REGISTER_LOCK:
             if bundle_name in REGISTERED_BUNDLES:
-                return REGISTERED_BUNDLES[bundle_name]
+                return {"result": REGISTERED_BUNDLES[bundle_name]}
 
             trace = TIDE.from_bundle(path)
             bundle_id = register_bundle_name(BUNDLES, bundle_name)
@@ -56,7 +56,7 @@ def register_trace(bundle_name: str) -> str:
 
             REGISTERED_BUNDLES[bundle_name] = trace_id
             
-            return trace_id
+            return {"result": trace_id}
     else:
         raise DataValidationError('`bundle_name` must be a str identifier')
     

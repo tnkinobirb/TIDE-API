@@ -3,6 +3,7 @@ from tideapi_core.request_handlers import (
     inspect_ref,
     inspect_exec,
     inspect_actor,
+    register_trace,
     redirect_to_docs,
     available_traces,
     available_bundles,

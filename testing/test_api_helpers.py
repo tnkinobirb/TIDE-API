@@ -51,6 +51,12 @@ class TestNativeHelpers:
         name = get_bundle_name(sample_traces_dict, sample_trace_uuid)
         assert name == 'example.json'
 
+        with pytest.raises(APILookupError):
+            get_bundle_name(sample_traces_dict, "unknown")
+
+        with pytest.raises(DataValidationError):
+            get_bundle_name(sample_traces_dict, 1)
+
     def test_register_bundle_name(self, empty_dict, sample_bundle_name):
         bundle_id = register_bundle_name(empty_dict, sample_bundle_name)
         assert len(empty_dict) == 1
@@ -73,6 +79,13 @@ class TestNativeHelpers:
         assert trace is sample_traces_dict[sample_trace_uuid]
         assert trace["bundle_id"] == sample_bundle_uuid
         assert trace["bundle_name"] == sample_bundle_name
+
+        with pytest.raises(APILookupError):
+            get_trace(sample_traces_dict, "unknown")
+
+        with pytest.raises(DataValidationError):
+            get_trace(sample_traces_dict, 1)
+            
 
     @pytest.mark.parametrize(
         ["name", "should_exist"],

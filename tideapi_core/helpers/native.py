@@ -48,6 +48,8 @@ def list_traces(TRACES: dict) -> list:
     return list(TRACES)
 
 def get_trace(TRACES: dict, trace_id: str) -> dict:
+    if not isinstance(trace_id, str):
+        raise DataValidationError(f"Invalid trace_id type: {type(trace_id)}") 
     trace = TRACES.get(trace_id)
     if trace is None:
         raise APILookupError(f"Unknown trace: {trace_id}")
