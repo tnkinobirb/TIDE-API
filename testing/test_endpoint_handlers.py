@@ -14,6 +14,7 @@ from tideapi.handlers import (
 )
 import json
 import pytest
+import shutil
 import inspect 
 from pathlib import Path
 from typing import Any, Callable
@@ -22,6 +23,7 @@ from tideapi.helpers.fastapi import initialise_fastapi_app
 from tideapi.exceptions import APILookupError, TraceLookupError, DataValidationError
 from fastapi.responses import RedirectResponse
 from fastapi.testclient import TestClient
+from tide_tooling import Trace
 from fastapi import Query
 
 def assert_endpoint(endpoint:dict[str, Any], path:str, methods:list[str]|set[str], function:Callable[..., Any]) -> None:
@@ -39,7 +41,7 @@ def assert_endpoint_configuration(endpoints:dict[str, dict[str, Any]], path:str,
     expected_result = function(**kwargs) if execute else None
     return endpoint, expected_result
 
-def endpoint_tester(method:str, endpoint:dict[str, Any], status_code:int, expected_result:dict[str, Any], replace:list[tuple[str,str]]|None=None, **kwargs:Any) -> tuple[TestClient, Any]:
+def endpoint_tester(method:str, endpoint:dict[str, Any], status_code:int, expected_result:dict[str, Any]|None=None, replace:list[tuple[str,str]]|None=None, compare_result:bool=True, **kwargs:Any) -> tuple[TestClient, Any]:
     app = initialise_fastapi_app(ENDPOINT_HANDLERS=[endpoint])
     client = TestClient(app)
 
@@ -52,7 +54,8 @@ def endpoint_tester(method:str, endpoint:dict[str, Any], status_code:int, expect
     assert response.status_code == status_code
     
     rjson = response.json()
-    assert rjson == expected_result
+    if compare_result:
+        assert rjson == expected_result
     assert_is_tide_api_response(rjson)    
     return client, response
 
@@ -222,7 +225,11 @@ class TestAPIHelperEndpoints:
         # Test no traces
         with monkeypatch.context() as m:
             m.setattr(request_handlers, "TRACES", {})
-            assert client.get(url=f"/traces").status_code == 200
+            response = client.get("/traces")
+            
+            assert response.status_code == 200
+            assert response.json() == {"result": {}}
+
 
     def test_available_bundles(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> None:
         
@@ -251,8 +258,12 @@ class TestAPIHelperEndpoints:
         with monkeypatch.context() as m:
             empty_path = tmp_path_factory.mktemp('empty')
             assert not any(empty_path.iterdir())
+            
             m.setattr(request_handlers, "ROOT", empty_path)
-            assert client.get(url=f"/bundles").status_code == 200
+            response = client.get("/bundles")
+
+            assert response.status_code == 200
+            assert response.json() == {"result": []}
 
     def test_bundle_name_by_trace_id(
         self, endpoints: dict[str, dict[str, Any]], sample_trace_uuid: str
@@ -326,11 +337,12 @@ class TestAPIHelperEndpoints:
         with pytest.raises(TraceLookupError):
             function(**replace_params)
             
-    def test_register_trace(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_register_trace(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> None:
         with monkeypatch.context() as m:
-            m.setattr(request_handlers.TIDE, "from_bundle", lambda self: {})
-            m.setattr(request_handlers, "ROOT", tmp_path)
-            (tmp_path / "example.json").write_text("{}")
+            bundle_path = (Path(__file__).parent / "bundles") 
+            assert bundle_path.exists()
+            
+            m.setattr(request_handlers, "ROOT", bundle_path)
             m.setattr(request_handlers, "BUNDLES", {})
             m.setattr(request_handlers, "TRACES", {})
             m.setattr(request_handlers, "REGISTERED_BUNDLES", {})
@@ -342,42 +354,40 @@ class TestAPIHelperEndpoints:
             assert len(TRACES) == 0
             assert len(BUNDLES) == 0
             assert len(REGISTERED_BUNDLES) == 0 
-            assert len(list(tmp_path.iterdir())) == 1
-            
-            endpoint, expected_result = assert_endpoint_configuration(
+            assert len(list(bundle_path.iterdir())) == 1
+
+            endpoint, _ = assert_endpoint_configuration(
                 endpoints,
                 methods=['POST'],
                 function=register_trace,
                 path='/register/trace/{bundle_name}',
                 bundle_name="example.json",
+                execute=False
             )
     
-            endpoint_tester(
+            _, response = endpoint_tester(
                 method=endpoint['methods'][0],
                 endpoint=endpoint,
                 status_code=200,
-                expected_result=expected_result,
                 replace=[('bundle_name', 'example.json')],
+                compare_result=False,
             )
 
-            assert len(BUNDLES) == 1 
             assert len(TRACES) == 1 
+            assert len(BUNDLES) == 1 
             assert len(REGISTERED_BUNDLES) == 1
-            assert len(list(tmp_path.iterdir())) == 1  
+            assert len(list(bundle_path.iterdir())) == 1  
 
+            trace_id = list(TRACES.keys())[0]
+            assert response.json() == {"result": trace_id}
             assert list(BUNDLES.values())[0] == 'example.json'
-            assert 'example.json' in REGISTERED_BUNDLES  
-            assert REGISTERED_BUNDLES['example.json'] == list(TRACES.keys())[0]
-            assert list(TRACES.values())[0] == {
-                'trace':{}, 
-                'bundle_name':'example.json', 
-                'bundle_id':list(BUNDLES.keys())[0]
-            } 
+            assert REGISTERED_BUNDLES['example.json'] == trace_id
             
-            
-            
-
-            
+            assert trace_id in TRACES
+            assert 'example.json' in REGISTERED_BUNDLES
+            assert isinstance(TRACES[trace_id]['trace'], Trace)
+            assert TRACES[trace_id]['bundle_name'] == 'example.json' 
+            assert TRACES[trace_id]['bundle_id'] == list(BUNDLES.keys())[0]
             
             with pytest.raises(DataValidationError):
                 register_trace('path/to/dir.json')

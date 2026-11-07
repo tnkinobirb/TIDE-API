@@ -16,7 +16,7 @@ class TestMiddleware:
         monkeypatch.setattr(request_handlers, "REGISTERED_BUNDLES", {})
 
 
-    def test_docs_middleware(self, monkeypatch, tmp_path):
+    def test_initialise_traces_on_docs_load(self, monkeypatch, tmp_path):
         calls = []
 
         with monkeypatch.context() as m:
