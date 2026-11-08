@@ -1,7 +1,8 @@
 import sqlite3
 from pathlib import Path 
 from contextlib import contextmanager
-from tideapi_core.exceptions import InvalidAPIStoreConfigurationError
+
+from tideapi.exceptions import InvalidAPIStoreConfigurationError, DataValidationError
 
 class TIDEAPIStore:
     
@@ -64,10 +65,12 @@ class TIDEAPIStore:
                     print("`bundles.db` initialised and configured.")    
 
     def set(self, bundle_name: str, bundle: str) -> None:
+        if any(not isinstance(inp, str) for inp in [bundle_name, bundle]):
+            raise DataValidationError("Store.set() only accepts str values")
         with self.apistore as conn:
             self.get_cursor(conn).execute(
                 "INSERT INTO bundles (bundle_name, bundle)" \
-                "VALUES ('example.json', 'example.info')",  
+                "VALUES (?, ?)", (bundle_name, bundle) 
             )
 
     def get():
@@ -108,12 +111,13 @@ class TIDEAPIStore:
 
             return
         except Exception as e:
+            if self.VERBOSE:
+                print("bundles.db` exists but its configuration is invalid") 
             raise InvalidAPIStoreConfigurationError(
                 "`bundles.db` exists but its configuration is invalid. \n" \
                 "Expects a store with a `bundles` table containing `bundle_name` and `bundle` cols ONLY! \n" \
                 "This error is used to avoid accidental data corruption \n" \
-                f"e = {type(e).__name__} {str(e)}{'. \n cols = {cols}.' if cols else '.'}" \
-                
+                f"e = {type(e).__name__} {str(e)}{f'. \n cols = {cols}.' if cols else '.'}" \
             )
 
 if __name__ == "__main__":
