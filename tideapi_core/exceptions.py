@@ -24,3 +24,7 @@ class DataValidationError(TIDEAPIException):
 class RouteAlreadyRegisteredError(TIDEAPIException):
     '''Use when a FastAPI already exists on registration of it'''
     pass
+
+class InvalidAPIStoreConfigurationError(TIDEAPIException):
+    '''Use when a TIDEAPI Store fails to configure or its configuration is invalid'''
+    pass
