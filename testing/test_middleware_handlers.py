@@ -2,6 +2,7 @@ from tideapi.handlers import initialise_traces_on_docs_load
 from tideapi.helpers.fastapi import initialise_fastapi_app
 from fastapi.testclient import TestClient
 import pytest
+from types import SimpleNamespace 
 from tideapi_core import request_handlers
 
 class TestMiddleware:
@@ -10,13 +11,13 @@ class TestMiddleware:
     def setup_monkeypatch(
         self,
         monkeypatch,
+        api_db
     ):
         monkeypatch.setattr(request_handlers, "TRACES", {})
         monkeypatch.setattr(request_handlers, "BUNDLES", {})
         monkeypatch.setattr(request_handlers, "REGISTERED_BUNDLES", {})
 
-
-    def test_initialise_traces_on_docs_load(self, monkeypatch, tmp_path):
+    def test_initialise_traces_on_docs_load(self, monkeypatch, tmp_path, api_db):
         calls = []
 
         with monkeypatch.context() as m:
@@ -44,7 +45,7 @@ class TestMiddleware:
         with monkeypatch.context() as m:
             m.setattr(request_handlers, 'ROOT', tmp_path)
             m.setattr(request_handlers.TIDE, 'from_bundle', lambda self: {})
-            (tmp_path / "example.json").write_text('{}')
+            cursor = api_db.set('example.json', '1234')
             app = initialise_fastapi_app(
                 MIDDLEWARE_HANDLERS=[{
                     "type": "http",
@@ -55,6 +56,7 @@ class TestMiddleware:
             BUNDLES = getattr(request_handlers, "BUNDLES")
             TRACES = getattr(request_handlers, "TRACES")
             REGISTERED_BUNDLES = getattr(request_handlers, "REGISTERED_BUNDLES")
+            monkeypatch.setattr(request_handlers, "STORE", api_db)
 
             assert all([len(ctx) == 0 for ctx in [TRACES, REGISTERED_BUNDLES]]) 
 

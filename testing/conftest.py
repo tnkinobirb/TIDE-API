@@ -1,9 +1,12 @@
 import pytest, uuid
+from tideapi.persistence import TIDEAPIStore
 from tideapi.handlers import ENDPOINT_HANDLERS 
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from tide_tooling import TIDE, Trace
-
+from pathlib import Path
+import sqlite3
+import json
 template_bundle_name = "example.json"
 template_bundle_uuid4 = uuid.uuid4().hex
 template_trace_uuid4 = uuid.uuid4().hex
@@ -52,7 +55,20 @@ def sample_traces_dict():
         }
     }
 
+@pytest.fixture
+def api_db(monkeypatch, tmp_path: Path) -> sqlite3.Connection:
+    db_path =  (tmp_path / 'bundles.db')
+    monkeypatch.setattr(TIDEAPIStore, 'ROOT', tmp_path)
+    monkeypatch.setattr(TIDEAPIStore, 'BUNDLE_PATH', db_path)
+    return TIDEAPIStore()
 
+@pytest.fixture
+def tide_bundle():
+    bundles = Path(__file__).parent / 'bundles'
+    assert bundles.exists()
+    tide_bundle = bundles / 'example.json'
+    assert tide_bundle.exists()
+    return tide_bundle.read_text(encoding='utf-8')
 
 @pytest.fixture
 def sample_endpoints():

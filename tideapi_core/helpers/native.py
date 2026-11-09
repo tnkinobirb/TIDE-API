@@ -5,7 +5,7 @@ from tideapi_core.exceptions import (
     APILookupError,
     DataValidationError,
 )
-
+from tideapi_core.persistence.tideapi_store import TIDEAPIStore
 
 
 # BUNDLES
@@ -28,19 +28,13 @@ def get_bundle_name(TRACES: dict, trace_id: str) -> str:
     trace = get_trace(TRACES, trace_id)
     return trace["bundle_name"]
 
-def validate_bundle_name(ROOT: Path, bundle_name: str) -> Path:
-    root = ROOT.resolve()
-    path = (root / bundle_name).resolve()
-    
+def validate_bundle_name(bundle_name: str) -> str:
     prohibited = ['/', '\\']    
 
-    if path.parent != root or path.suffix.lower() != ".json" or any(p in bundle_name for p in prohibited):
+    if not bundle_name.endswith(".json") or any(p in bundle_name for p in prohibited):
         raise DataValidationError(f"Invalid bundle name {bundle_name}")
 
-    if not path.is_file():
-        raise APILookupError(f"Bundle not found{bundle_name}")
-
-    return path
+    return bundle_name
 
 # TRACES
 

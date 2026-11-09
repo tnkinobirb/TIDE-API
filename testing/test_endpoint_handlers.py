@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Callable
 import tideapi_core.request_handlers as request_handlers
 from tideapi.helpers.fastapi import initialise_fastapi_app
-from tideapi.exceptions import APILookupError, TraceLookupError, DataValidationError
+from tideapi.exceptions import APILookupError, TraceLookupError, DataValidationError, APIStoreLookupError
 from fastapi.responses import RedirectResponse
 from fastapi.testclient import TestClient
 from tide_tooling import Trace
@@ -337,16 +337,16 @@ class TestAPIHelperEndpoints:
         with pytest.raises(TraceLookupError):
             function(**replace_params)
             
-    def test_register_trace(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> None:
+    def test_register_trace(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch, tmp_path, api_db, tide_bundle:str) -> None:
         with monkeypatch.context() as m:
-            bundle_path = (Path(__file__).parent / "bundles") 
-            assert bundle_path.exists()
-            
-            m.setattr(request_handlers, "ROOT", bundle_path)
+            m.setattr(request_handlers, "ROOT", tmp_path)
             m.setattr(request_handlers, "BUNDLES", {})
             m.setattr(request_handlers, "TRACES", {})
             m.setattr(request_handlers, "REGISTERED_BUNDLES", {})
-
+            m.setattr(request_handlers, "STORE", api_db)
+            
+            api_db.set('example.json', tide_bundle)
+            
             TRACES = getattr(request_handlers, "TRACES")
             BUNDLES = getattr(request_handlers, "BUNDLES")
             REGISTERED_BUNDLES = getattr(request_handlers, "REGISTERED_BUNDLES")
@@ -354,7 +354,7 @@ class TestAPIHelperEndpoints:
             assert len(TRACES) == 0
             assert len(BUNDLES) == 0
             assert len(REGISTERED_BUNDLES) == 0 
-            assert len(list(bundle_path.iterdir())) == 1
+            assert len(list(api_db.bundles())) == 1
 
             endpoint, _ = assert_endpoint_configuration(
                 endpoints,
@@ -376,7 +376,7 @@ class TestAPIHelperEndpoints:
             assert len(TRACES) == 1 
             assert len(BUNDLES) == 1 
             assert len(REGISTERED_BUNDLES) == 1
-            assert len(list(bundle_path.iterdir())) == 1  
+            assert len(list(api_db.bundles())) == 1  
 
             trace_id = list(TRACES.keys())[0]
             assert response.json() == {"result": trace_id}
@@ -392,7 +392,7 @@ class TestAPIHelperEndpoints:
             with pytest.raises(DataValidationError):
                 register_trace('path/to/dir.json')
 
-            with pytest.raises(APILookupError):
+            with pytest.raises(APIStoreLookupError):
                 register_trace('unknown.json')
 
             

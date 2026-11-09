@@ -232,3 +232,18 @@ def test_store_exists(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     
     conn.close()
 
+def test_list_bundles(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: TempPathFactory):
+    bundle_path = tmp_path_factory.mktemp('bundles')
+    conn, apistore = init_test_apistore(monkeypatch, bundle_path)
+   
+    # Init store    
+    conn.cursor().execute("INSERT INTO bundles (bundle_name, bundle) VALUES ('example.json', '1234')")
+    conn.commit()
+
+    assert list(apistore.bundles()) == ['example.json']
+    conn.close()
+
+    empty_path = tmp_path_factory.mktemp('empty')
+    e_conn, e_apistore = init_test_apistore(monkeypatch, empty_path)
+    assert e_apistore.bundles() == []
+    e_conn.close()

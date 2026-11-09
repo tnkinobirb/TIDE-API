@@ -114,6 +114,16 @@ class TIDEAPIStore:
                 exists = bool(cursor.fetchone()[0])
                 return exists
 
+    def bundles(self) -> list[str]:
+        with self.lock:
+            with self.apistore as conn:
+                cursor = self.get_cursor(conn).execute("SELECT bundle_name FROM bundles")
+                row = cursor.fetchall()
+                if row is None:
+                    return []
+
+                return [tpl[0] for tpl in row]
+
     def _init_bundles_db(self, conn: sqlite3.Connection) -> sqlite3.Connection:
         cursor = self.get_cursor(conn)
         cursor.execute('create table bundles(bundle_name TEXT, bundle TEXT)')

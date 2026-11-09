@@ -1,6 +1,6 @@
 import uuid
 import tideapi_core.request_handlers as request_handlers
-
+import json
 from typing import TYPE_CHECKING
 from types import SimpleNamespace
 from fastapi import Request, status
@@ -9,6 +9,7 @@ from threading import Lock
 from pathlib import Path
 from tide_tooling import TIDE
 from fastapi.concurrency import run_in_threadpool
+from tideapi_core.persistence.tideapi_store import TIDEAPIStore
 from tideapi_core.app_context import (
     TRACES, 
     BUNDLES, 
@@ -30,6 +31,7 @@ from tideapi_core.exceptions import (
 # Secrets + Pre-init
 ROOT = Path(__file__).parents[1] / "bundles"
 REGISTER_LOCK = Lock()
+STORE = TIDEAPIStore()
 
 # Redirect
 def redirect_to_docs():
@@ -39,12 +41,13 @@ def redirect_to_docs():
 
 def register_trace(bundle_name: str) -> dict[str, str]:
     if isinstance(bundle_name, str):
-        path = validate_bundle_name(ROOT, bundle_name)
+        validate_bundle_name(bundle_name)
+        bundle = json.loads(STORE.get(bundle_name))
         with REGISTER_LOCK:
             if bundle_name in REGISTERED_BUNDLES:
                 return {"result": REGISTERED_BUNDLES[bundle_name]}
 
-            trace = TIDE.from_bundle(path)
+            trace = TIDE.from_bundle(bundle)
             bundle_id = register_bundle_name(BUNDLES, bundle_name)
             trace_id = uuid.uuid4().hex
             
@@ -64,12 +67,15 @@ def register_trace(bundle_name: str) -> dict[str, str]:
 
 # SHOW
 
-def available_bundles():
-    bundles = []
-    if ROOT.exists():
-        for item in ROOT.iterdir():
-            if item.is_file() and item.suffix.lower() == ".json":
-                bundles.append(item.name)
+def available_bundles(from_store: bool=True) -> dict[str, list[str]]:
+    if from_store:
+       bundles = STORE.bundles()
+    else:
+        bundles = []
+        if ROOT.exists():
+            for item in ROOT.iterdir():
+                if item.is_file() and item.suffix.lower() == ".json":
+                    bundles.append(item.name)
 
     return {"result": bundles}
 
@@ -123,8 +129,8 @@ def inspect_actor(trace_id: str, ref: str):
 
 # DEV
 
-def initialise_traces_from_bundles():
-    for bundle_name in available_bundles()['result']:
+def initialise_traces_from_bundles(from_store:bool=True):
+    for bundle_name in available_bundles(from_store)['result']:
         if is_bundle_registered(REGISTERED_BUNDLES, bundle_name):
             continue
         register_trace(bundle_name)

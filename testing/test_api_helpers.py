@@ -21,21 +21,17 @@ from tideapi.exceptions import (DataValidationError, APILookupError, RouteAlread
 
 class TestNativeHelpers:
 
-    def test_valid_bundle_name(self, bundle_dir, sample_bundle_name):
-        result = validate_bundle_name(bundle_dir, sample_bundle_name)
-        assert result == bundle_dir / sample_bundle_name
-
-    def test_unknown_bundle_name(self, bundle_dir):
-        with pytest.raises(APILookupError):
-            validate_bundle_name(bundle_dir, "non-existent.json")
+    def test_valid_bundle_name(self, sample_bundle_name):
+        result = validate_bundle_name(sample_bundle_name)
+        assert result == sample_bundle_name
 
     def test_unknown_trace_id(self, sample_traces_dict):
         with pytest.raises(APILookupError):
             get_trace(sample_traces_dict, "non-existent-id")
 
-    def test_invalid_extension(self, bundle_dir):
+    def test_invalid_extension(self):
         with pytest.raises(DataValidationError):
-            validate_bundle_name(bundle_dir, "example.exe")
+            validate_bundle_name("example.exe")
 
     @pytest.mark.parametrize("name", [
         "example",
@@ -43,9 +39,9 @@ class TestNativeHelpers:
         "..\\example",
         "../path/to/example.json",
     ])
-    def test_invalid_names(self, bundle_dir, name):
+    def test_invalid_names(self, name):
         with pytest.raises(DataValidationError):
-            validate_bundle_name(bundle_dir, name)
+            validate_bundle_name(name)
 
     def test_get_bundle_name(self, sample_traces_dict, sample_trace_uuid):        
         name = get_bundle_name(sample_traces_dict, sample_trace_uuid)
