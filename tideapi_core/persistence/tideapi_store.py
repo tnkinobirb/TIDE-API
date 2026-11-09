@@ -92,14 +92,15 @@ class TIDEAPIStore:
         if not isinstance(bundle_name, str):
             raise DataValidationError("Store.pop() only accepts str values")
 
-        result = self.get(bundle_name)
-
         with self.lock:
             with self.apistore as conn:
                 cursor = self.get_cursor(conn).execute(
-                    "DELETE FROM bundles WHERE bundle_name=?", (bundle_name, )
+                    "DELETE FROM bundles WHERE bundle_name=? RETURNING bundle", (bundle_name, )
                 )
-                return result
+                row = cursor.fetchone()
+                if row is None:
+                    raise APIStoreLookupError("bundle_name {bundle_name} not found!")
+                return row[0]
 
     def exists(self, bundle_name: str) -> str:
          if not isinstance(bundle_name, str):
