@@ -144,7 +144,7 @@ def test_store_set(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
 
     conn.close()
 
-@pytest.mark.skip()
+# @pytest.mark.skip()
 def test_store_get(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     conn, apistore = init_test_apistore(monkeypatch, tmp_path)
 
@@ -172,7 +172,7 @@ def test_store_get(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
 
     conn.close()
 
-@pytest.mark.skip()
+# @pytest.mark.skip()
 def test_store_pop(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     conn, apistore = init_test_apistore(monkeypatch, tmp_path)
 
@@ -205,7 +205,7 @@ def test_store_pop(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     
     conn.close()
 
-@pytest.mark.skip()
+# @pytest.mark.skip()
 def test_store_exists(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     conn, apistore = init_test_apistore(monkeypatch, tmp_path)
 

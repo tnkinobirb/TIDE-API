@@ -5,6 +5,7 @@ from tideapi_core.exceptions import (
     APILookupError,
     DataValidationError,
     InternalExceptionError,
+    RouteAlreadyRegisteredError,
 )
 
 def handle_trace_lookup_exception(request: Request, exc: TraceLookupError):
