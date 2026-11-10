@@ -57,9 +57,7 @@ def sample_traces_dict():
 
 @pytest.fixture
 def api_db(monkeypatch, tmp_path: Path) -> sqlite3.Connection:
-    db_path =  (tmp_path / 'bundles.db')
     monkeypatch.setattr(TIDEAPIStore, 'ROOT', tmp_path)
-    monkeypatch.setattr(TIDEAPIStore, 'BUNDLE_PATH', db_path)
     return TIDEAPIStore()
 
 @pytest.fixture
@@ -101,11 +99,11 @@ def sample_middleware():
     return [
         {
         'type': 'http',
-        'function':  sample_middleware_func_0
+        'function': sample_middleware_func_0
         },
         {
         'type': 'http',
-        'function':  sample_middleware_func_1
+        'function': sample_middleware_func_1
         },
     ]
 

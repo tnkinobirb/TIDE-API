@@ -17,7 +17,7 @@ from tideapi.helpers.fastapi import (
     register_middleware_handlers,
 )
 
-from tideapi.exceptions import (DataValidationError, APILookupError, RouteAlreadyRegisteredError)
+from tideapi.exceptions import (DataValidationError, APILookupError, AlreadyRegisteredError)
 
 class TestNativeHelpers:
 
@@ -202,7 +202,7 @@ class TestFastAPIHelpers:
         pre_ware = list(app.user_middleware)
         pre_exc = dict(app.exception_handlers)
 
-        with pytest.raises(RouteAlreadyRegisteredError):
+        with pytest.raises(AlreadyRegisteredError):
             register_endpoint_handlers(app, [endpoint_handler])
 
         post_routes = list(app.routes)
@@ -221,7 +221,7 @@ class TestFastAPIHelpers:
         }
         app = initialise_fastapi_app()
         pre_routes_len = len(app.routes)
-        with pytest.raises(RouteAlreadyRegisteredError):
+        with pytest.raises(AlreadyRegisteredError):
             register_endpoint_handlers(app, [endpoint_handler, endpoint_handler])
         post_routes_len = len(app.routes)
 

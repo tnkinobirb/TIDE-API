@@ -1,11 +1,12 @@
 from fastapi import Request  
 from fastapi.responses import JSONResponse
 from tideapi_core.exceptions import (
-    TraceLookupError,
     APILookupError,
+    TraceLookupError,
+    APIStoreLookupError, #  404
     DataValidationError,
     InternalExceptionError,
-    RouteAlreadyRegisteredError,
+    AlreadyRegisteredError, # 409
 )
 
 def handle_trace_lookup_exception(request: Request, exc: TraceLookupError):
@@ -44,12 +45,23 @@ def handle_internal_exception(request: Request, exc: InternalExceptionError):
         },
     )
 
+def handle_already_registered_exception(request: Request, exc: InternalExceptionError):
+    return JSONResponse(
+        status_code=409,
+        content={
+            "str": f"{str(exc)}",
+            "error": type(exc).__name__
+        },
+    )
+
 
 # EXCEPTION HANDLERS DICT
 
 EXCEPTION_HANDLERS = {
     APILookupError: handle_api_lookup_exception,
     TraceLookupError: handle_trace_lookup_exception,
-    InternalExceptionError: handle_internal_exception,
+    APIStoreLookupError: handle_api_lookup_exception,
     DataValidationError: handle_data_validation_exception,
+    InternalExceptionError: handle_internal_exception,
+    AlreadyRegisteredError: handle_already_registered_exception
 }

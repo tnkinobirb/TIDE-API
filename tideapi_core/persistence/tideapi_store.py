@@ -6,11 +6,11 @@ from tideapi.exceptions import InvalidAPIStoreConfigurationError, DataValidation
 
 class TIDEAPIStore:
 
-    ROOT = Path(__file__).parent 
-    BUNDLE_PATH = ROOT / 'bundles.db'
+    ROOT = Path(__file__).parents[2]
     VERBOSE=True
 
     def __init__(self):
+        self.BUNDLE_PATH = self.ROOT / 'bundles.db'
         self.create_bundle_store()
         self.lock = RLock()
 
@@ -126,7 +126,7 @@ class TIDEAPIStore:
 
     def _init_bundles_db(self, conn: sqlite3.Connection) -> sqlite3.Connection:
         cursor = self.get_cursor(conn)
-        cursor.execute('create table bundles(bundle_name TEXT, bundle TEXT)')
+        cursor.execute('create table bundles(bundle_name TEXT PRIMARY KEY, bundle TEXT NOT NULL)')
 
     def _assert_expected_api_store_config(self, conn: sqlite3.Connection) -> None:
         cols = []
@@ -148,8 +148,16 @@ class TIDEAPIStore:
             assert cols[0] == "bundle_name", 'cols[0] == "bundle_name"'
             assert cols[1] == "bundle", 'cols[1] == "bundle"'
 
-            "TEXT" == str(cursor.execute("SELECT typeof (bundle) FROM bundles"))
-            "TEXT" == str(cursor.execute("SELECT typeof (bundle_name) FROM bundles"))
+            expected_cols = [
+                (0, 'bundle_name', 'TEXT', 0, None, 1),
+                (1, 'bundle', 'TEXT', 1, None, 0)
+            ]
+            cursor = cursor.execute("PRAGMA table_info(bundles)")
+            cols = cursor.fetchall()
+            assert len(cols) == len(expected_cols), "PRAGMA lrn mismatch"
+            assert all([cols[idx] == expected_cols[idx] for idx, _ in enumerate(cols)]), f"PRAGMA col mismatch: {print(cols)}"
+            #assert "TEXT" == str(cursor.execute("SELECT typeof (bundle) FROM bundles"))
+            #assert "TEXT" == str(cursor.execute("SELECT typeof (bundle_name) FROM bundles"))
 
             return
         except Exception as e:

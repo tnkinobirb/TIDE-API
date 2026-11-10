@@ -7,7 +7,6 @@ from pytest import TempPathFactory
 
 def init_test_apistore(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setattr(TIDEAPIStore, 'ROOT', tmp_path)
-    monkeypatch.setattr(TIDEAPIStore, 'BUNDLE_PATH', tmp_path / 'bundles.db')
     monkeypatch.setattr(TIDEAPIStore, 'VERBOSE', False)
     apistore = TIDEAPIStore()
     conn = sqlite3.connect(tmp_path / 'bundles.db')

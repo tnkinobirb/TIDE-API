@@ -1,4 +1,5 @@
 from tideapi_core.request_handlers import (
+    init_store,
     show_trace,
     inspect_ref,
     inspect_exec,
@@ -20,5 +21,6 @@ from tideapi_core.exception_handlers import (
     handle_api_lookup_exception,
     handle_trace_lookup_exception,
     handle_data_validation_exception,
+    handle_already_registered_exception
 )
 

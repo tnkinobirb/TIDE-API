@@ -1,5 +1,6 @@
 
 from tideapi.handlers import (
+    init_store,
     show_trace,
     inspect_ref,
     inspect_exec,
@@ -19,6 +20,7 @@ import inspect
 from pathlib import Path
 from typing import Any, Callable
 import tideapi_core.request_handlers as request_handlers
+from tideapi.persistence import TIDEAPIStore
 from tideapi.helpers.fastapi import initialise_fastapi_app
 from tideapi.exceptions import APILookupError, TraceLookupError, DataValidationError, APIStoreLookupError
 from fastapi.responses import RedirectResponse
@@ -187,6 +189,13 @@ class TestAPIHelperEndpoints:
         monkeypatch.setattr(request_handlers, "BUNDLES", {sample_bundle_uuid: sample_bundle_name})
         monkeypatch.setattr(request_handlers, "REGISTERED_BUNDLES", {sample_bundle_name: sample_trace_uuid})
 
+    def test_apistore_init(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(request_handlers, "STORE", None)
+        monkeypatch.setattr(request_handlers.TIDEAPIStore, "ROOT", tmp_path)    
+        
+        assert not any(list(tmp_path.iterdir()))
+        init_store()
+        assert len(list(tmp_path.iterdir())) == 1
 
     def test_redirect_to_docs(self, endpoints: dict[str, dict[str, Any]]) -> None:
         endpoint, expected_result = assert_endpoint_configuration(
@@ -233,11 +242,19 @@ class TestAPIHelperEndpoints:
 
     def test_available_bundles(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> None:
         
+        # Test no bundles
         with monkeypatch.context() as m:
-            bundle_path = tmp_path_factory.mktemp('bundles')
-            (bundle_path / 'example.json').write_text('{}')
-            
-            m.setattr(request_handlers, 'ROOT', bundle_path)    
+            m.setattr(request_handlers, "STORE", None)
+            test_path = tmp_path_factory.mktemp('test')
+            m.setattr(request_handlers.TIDEAPIStore, "ROOT", test_path)
+
+            store = init_store()
+
+            assert not store.bundles() 
+            store.set("example.json", "1234")
+            bundles = store.bundles()
+            assert len(bundles) == 1
+            assert bundles[0] == "example.json"
             
 
             endpoint, expected_result = assert_endpoint_configuration(
@@ -254,16 +271,20 @@ class TestAPIHelperEndpoints:
                 expected_result=expected_result,
             )
 
-        # Test no bundles
+        # Test bundles
         with monkeypatch.context() as m:
+            m.setattr(request_handlers, "STORE", None)
             empty_path = tmp_path_factory.mktemp('empty')
             assert not any(empty_path.iterdir())
-            
-            m.setattr(request_handlers, "ROOT", empty_path)
+            m.setattr(TIDEAPIStore, "ROOT", empty_path)
+            init_store()
             response = client.get("/bundles")
 
             assert response.status_code == 200
             assert response.json() == {"result": []}
+        
+
+
 
     def test_bundle_name_by_trace_id(
         self, endpoints: dict[str, dict[str, Any]], sample_trace_uuid: str
@@ -339,7 +360,6 @@ class TestAPIHelperEndpoints:
             
     def test_register_trace(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch, tmp_path, api_db, tide_bundle:str) -> None:
         with monkeypatch.context() as m:
-            m.setattr(request_handlers, "ROOT", tmp_path)
             m.setattr(request_handlers, "BUNDLES", {})
             m.setattr(request_handlers, "TRACES", {})
             m.setattr(request_handlers, "REGISTERED_BUNDLES", {})
@@ -395,4 +415,6 @@ class TestAPIHelperEndpoints:
             with pytest.raises(APIStoreLookupError):
                 register_trace('unknown.json')
 
-            
+
+        
+        

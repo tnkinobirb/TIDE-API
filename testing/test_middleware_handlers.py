@@ -43,7 +43,6 @@ class TestMiddleware:
             assert calls == ["initialised"]
 
         with monkeypatch.context() as m:
-            m.setattr(request_handlers, 'ROOT', tmp_path)
             m.setattr(request_handlers.TIDE, 'from_bundle', lambda self: {})
             cursor = api_db.set('example.json', '1234')
             app = initialise_fastapi_app(

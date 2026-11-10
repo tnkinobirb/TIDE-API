@@ -1,24 +1,29 @@
-from tideapi.helpers.fastapi import initialise_fastapi_app
-from tideapi.exceptions import APILookupError, TraceLookupError, DataValidationError, InternalExceptionError
 import pytest
 from fastapi.testclient import TestClient
+from tideapi.helpers.fastapi import initialise_fastapi_app
+from tideapi.exceptions import (
+    APILookupError, 
+    TraceLookupError, 
+    APIStoreLookupError,
+    DataValidationError, 
+    AlreadyRegisteredError,
+    InternalExceptionError,
+)
 
 exceptions = {
     test[0].__name__: test for test in 
     [
-        (APILookupError,  404), 
+        (APILookupError, 404), 
         (TraceLookupError, 404),
+        (APIStoreLookupError, 404),
         (DataValidationError, 418),
+        (AlreadyRegisteredError, 409),
         (InternalExceptionError, 500),
     ]
 }
 
 from tideapi.handlers import (
     EXCEPTION_HANDLERS,
-    handle_api_lookup_exception,
-    handle_trace_lookup_exception,
-    handle_data_validation_exception,
-    handle_internal_exception,
 )
 
 # ENDPOINT 
@@ -28,7 +33,7 @@ def raise_error(exc: str) -> None:
     raise RuntimeError('Cannot raise invalid exception')
 
 # HELPERS
-def exc_endpoint(exc) -> dict:
+def exc_endpoint() -> dict:
     return {'path':'/exc', 'function': raise_error, 'methods':['POST']}
 
 def init_exc_endpoint(exc: Exception) -> TestClient:
@@ -36,7 +41,7 @@ def init_exc_endpoint(exc: Exception) -> TestClient:
         raise RuntimeError('Cannot handle invalid exception')
     
     exc_handlers = {exc: EXCEPTION_HANDLERS[exc]}
-    app = initialise_fastapi_app(EXCEPTION_HANDLERS=exc_handlers, ENDPOINT_HANDLERS=[exc_endpoint(exc)])    
+    app = initialise_fastapi_app(EXCEPTION_HANDLERS=exc_handlers, ENDPOINT_HANDLERS=[exc_endpoint()])    
     client = TestClient(app)
     return client
 
@@ -48,6 +53,4 @@ def exc_tester(exc: Exception, status_code:int):
 # TESTER
 @pytest.mark.parametrize(['exc', 'status_code'], tuple(exceptions.values()))
 def test_handle_api_lookup_exception(exc, status_code):
-    client = init_exc_endpoint(exc)
-    response = client.post('/exc', params={'exc': exc.__name__})
-    assert response.status_code == status_code
+    exc_tester(exc, status_code)

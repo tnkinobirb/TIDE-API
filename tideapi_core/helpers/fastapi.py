@@ -1,5 +1,5 @@
 from typing import TYPE_CHECKING
-from tideapi.exceptions import RouteAlreadyRegisteredError
+from tideapi.exceptions import AlreadyRegisteredError
 from fastapi import FastAPI, APIRouter
 
 
@@ -13,7 +13,7 @@ def register_endpoint_handlers(app: FastAPI, ENDPOINT_HANDLERS: list[dict]) -> N
         if next(iter(
             route for route in list(app.routes) if route.path == handler['path']
         ), None) or handler['path'] in seen:
-            raise RouteAlreadyRegisteredError(f"Route for {handler['path']} already exists!")
+            raise AlreadyRegisteredError(f"Route for {handler['path']} already exists!")
 
         seen[handler['path']] = handler
         

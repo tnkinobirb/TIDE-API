@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from types import SimpleNamespace
 from fastapi import Request, status
 from fastapi.responses import RedirectResponse
-from threading import Lock
+from threading import RLock, Lock
 from pathlib import Path
 from tide_tooling import TIDE
 from fastapi.concurrency import run_in_threadpool
@@ -29,9 +29,19 @@ from tideapi_core.exceptions import (
 )
 
 # Secrets + Pre-init
-ROOT = Path(__file__).parents[1] / "bundles"
+STORE = None
+STORE_LOCK = RLock()
 REGISTER_LOCK = Lock()
-STORE = TIDEAPIStore()
+
+def init_store() -> TIDEAPIStore:
+    global STORE
+
+    with STORE_LOCK:
+        if STORE is None:
+            STORE = TIDEAPIStore()
+            initialise_traces_from_bundles()
+
+    return STORE
 
 # Redirect
 def redirect_to_docs():
@@ -42,7 +52,7 @@ def redirect_to_docs():
 def register_trace(bundle_name: str) -> dict[str, str]:
     if isinstance(bundle_name, str):
         validate_bundle_name(bundle_name)
-        bundle = json.loads(STORE.get(bundle_name))
+        bundle = json.loads(init_store().get(bundle_name))
         with REGISTER_LOCK:
             if bundle_name in REGISTERED_BUNDLES:
                 return {"result": REGISTERED_BUNDLES[bundle_name]}
@@ -63,20 +73,9 @@ def register_trace(bundle_name: str) -> dict[str, str]:
     else:
         raise DataValidationError('`bundle_name` must be a str identifier')
     
-
-
 # SHOW
-
-def available_bundles(from_store: bool=True) -> dict[str, list[str]]:
-    if from_store:
-       bundles = STORE.bundles()
-    else:
-        bundles = []
-        if ROOT.exists():
-            for item in ROOT.iterdir():
-                if item.is_file() and item.suffix.lower() == ".json":
-                    bundles.append(item.name)
-
+def available_bundles() -> dict[str, list[str]]:
+    bundles = init_store().bundles()
     return {"result": bundles}
 
 def available_traces():
@@ -129,8 +128,8 @@ def inspect_actor(trace_id: str, ref: str):
 
 # DEV
 
-def initialise_traces_from_bundles(from_store:bool=True):
-    for bundle_name in available_bundles(from_store)['result']:
+def initialise_traces_from_bundles():
+    for bundle_name in available_bundles()['result']:
         if is_bundle_registered(REGISTERED_BUNDLES, bundle_name):
             continue
         register_trace(bundle_name)
@@ -139,6 +138,7 @@ def initialise_traces_from_bundles(from_store:bool=True):
 # MIDDLEWARE
 
 async def initialise_traces_on_docs_load(request: Request, call_next):
+    
     if request.url.path == "/docs":
         await run_in_threadpool(initialise_traces_from_bundles) 
 
