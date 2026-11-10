@@ -25,7 +25,9 @@ from tideapi_core.helpers.native import (
 )
 from tideapi_core.exceptions import (
     TraceLookupError,
-    DataValidationError
+    DataValidationError, 
+    InternalExceptionError,
+    APILookupError
 )
 
 # Secrets + Pre-init
@@ -39,15 +41,90 @@ def init_store() -> TIDEAPIStore:
     with STORE_LOCK:
         if STORE is None:
             STORE = TIDEAPIStore()
-            initialise_traces_from_bundles()
-
     return STORE
 
 # Redirect
 def redirect_to_docs():
     return RedirectResponse(url='docs/', status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
+# Validate bundle
+
+def validate_tide_bundle(path: Path) -> str:
+    try:
+        raw = path.read_text(encoding="utf-8")
+        bundle = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise DataValidationError("Invalid TIDE bundle JSON") from exc
+
+    def require(condition: bool, message: str) -> None:
+        if not condition:
+            raise DataValidationError(message)
+
+    require(isinstance(bundle, dict), "Bundle must be a JSON object")
+    require(
+        set(bundle) == {"manifest", "cas"},
+        "Invalid bundle root structure"
+    )
+
+    manifest = bundle["manifest"]
+    require(isinstance(manifest, dict), "Manifest must be an object")
+    require(
+        set(manifest) == {
+            "kind", "codec_version", "content", "run",
+            "values", "events", "metadata"
+        },
+        "Invalid manifest structure"
+    )
+
+    require(manifest["kind"] == "tide_bundle", "Invalid bundle kind")
+    require(
+        type(manifest["codec_version"]) is int
+        and manifest["codec_version"] == 1,
+        "Unsupported bundle codec version"
+    )
+    require(manifest["content"] == "trace", "Invalid bundle content")
+
+    require(isinstance(manifest["values"], dict), "Invalid values")
+    require(isinstance(manifest["metadata"], dict), "Invalid metadata")
+    require(isinstance(bundle["cas"], dict), "Invalid CAS")
+
+    run = manifest["run"]
+    require(isinstance(run, dict), "Run must be an object")
+    require(
+        set(run) == {
+            "kind", "codec_version", "trace",
+            "records", "ready_attempts"
+        },
+        "Invalid run structure"
+    )
+
+    require(run["kind"] == "tide_run", "Invalid run kind")
+    require(
+        type(run["codec_version"]) is int
+        and run["codec_version"] == 1,
+        "Unsupported run codec version"
+    )
+    require(isinstance(run["trace"], dict), "Invalid trace")
+    require(isinstance(run["records"], list), "Invalid records")
+    require(isinstance(run["ready_attempts"], list), "Invalid ready attempts")
+
+    return raw
+
 # REGISTER
+
+def register_bundle(bundle_path:str) -> None:
+    try:
+        path = Path(bundle_path)
+        filename = path.name    
+    except Exception as e:
+        raise InternalExceptionError(str(e))
+
+    if not path.exists():
+        raise APILookupError(f"Cannot find path {bundle_path}")
+
+    bundle = validate_tide_bundle(path)
+    
+    init_store().set(filename, bundle)
 
 def register_trace(bundle_name: str) -> dict[str, str]:
     if isinstance(bundle_name, str):
@@ -156,12 +233,14 @@ INSPECT_ENDPOINTS = [
 ENDPOINT_HANDLERS = [
     *INSPECT_ENDPOINTS,
     
+    
     {"methods": ["GET"], "function": redirect_to_docs,                  "path": "/"},
     {"methods": ["GET"], "function": available_traces,                  "path": "/traces"},
     {"methods": ["GET"], "function": available_bundles,                 "path": "/bundles"},
     {"methods": ["GET"], "function": bundle_name_by_trace_id,           "path": "/traces/{trace_id}/bundle_name"},
 
     {"methods": ["POST"],"function": register_trace,                    "path": "/register/trace/{bundle_name}"},
+    {"methods": ["POST"],"function": register_bundle,                   "path": "/register/bundle/{bundle_name}"},
     {"methods": ["POST"],"function": initialise_traces_from_bundles,    "path": "/dev/initialise_traces"},
     
 ]

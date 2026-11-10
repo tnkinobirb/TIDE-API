@@ -102,11 +102,11 @@ class TIDEAPIStore:
                     raise APIStoreLookupError("bundle_name {bundle_name} not found!")
                 return row[0]
 
-    def exists(self, bundle_name: str) -> str:
-         if not isinstance(bundle_name, str):
+    def exists(self, bundle_name: str) -> bool:
+        if not isinstance(bundle_name, str):
             raise DataValidationError("Store.exists() only accepts str values")
 
-         with self.lock:
+        with self.lock:
             with self.apistore as conn:
                 cursor = self.get_cursor(conn).execute(
                     "SELECT EXISTS(SELECT 1 FROM bundles WHERE bundle_name = ?)", (bundle_name, )
@@ -155,7 +155,7 @@ class TIDEAPIStore:
             cursor = cursor.execute("PRAGMA table_info(bundles)")
             cols = cursor.fetchall()
             assert len(cols) == len(expected_cols), "PRAGMA lrn mismatch"
-            assert all([cols[idx] == expected_cols[idx] for idx, _ in enumerate(cols)]), f"PRAGMA col mismatch: {print(cols)}"
+            assert all([cols[idx] == expected_cols[idx] for idx, _ in enumerate(cols)]), f"PRAGMA col mismatch: {cols}"
             #assert "TEXT" == str(cursor.execute("SELECT typeof (bundle) FROM bundles"))
             #assert "TEXT" == str(cursor.execute("SELECT typeof (bundle_name) FROM bundles"))
 

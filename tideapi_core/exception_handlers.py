@@ -45,7 +45,7 @@ def handle_internal_exception(request: Request, exc: InternalExceptionError):
         },
     )
 
-def handle_already_registered_exception(request: Request, exc: InternalExceptionError):
+def handle_already_registered_exception(request: Request, exc: AlreadyRegisteredError):
     return JSONResponse(
         status_code=409,
         content={
