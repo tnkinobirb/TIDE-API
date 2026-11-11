@@ -6,7 +6,8 @@ from fastapi.responses import JSONResponse
 from tide_tooling import TIDE, Trace
 from pathlib import Path
 import sqlite3
-import json
+import shutil
+
 template_bundle_name = "example.json"
 template_bundle_uuid4 = uuid.uuid4().hex
 template_trace_uuid4 = uuid.uuid4().hex
@@ -33,9 +34,26 @@ def empty_dict():
     return {}
 
 @pytest.fixture
-def bundle_dir(tmp_path):
-    (tmp_path / template_bundle_name).write_text("{}")
-    return tmp_path
+def bundle_dir(tmp_path_factory):
+    tmp_path = tmp_path_factory.mktemp("bundle_dir")
+
+    source = Path(__file__).parent / "bundles" / "example.json"
+    if not source.exists():
+        raise ValueError("Test bundle path could not be found!")
+    if not source.is_file():
+        raise TypeError("Test bundle was not a file!")
+    
+    destination = tmp_path / "bundles"
+
+    if destination.exists():
+        raise ValueError("Test bundle location already exists... needs an empty path")
+    
+    destination.mkdir()
+    shutil.copy2(source, destination)
+    files = list(destination.iterdir())
+    assert(len(files)) == 1
+    assert files[0].name == 'example.json'
+    return destination
 
 @pytest.fixture
 def sample_bundles_dict():  
@@ -56,7 +74,8 @@ def sample_traces_dict():
     }
 
 @pytest.fixture
-def api_db(monkeypatch, tmp_path: Path) -> sqlite3.Connection:
+def api_db(monkeypatch, tmp_path_factory: TempPathFactory) -> sqlite3.Connection:
+    tmp_path = tmp_path_factory.mktemp(uuid.uuid4().hex)
     monkeypatch.setattr(TIDEAPIStore, 'ROOT', tmp_path)
     return TIDEAPIStore()
 

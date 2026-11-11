@@ -34,6 +34,7 @@ from tideapi_core.exceptions import (
 STORE = None
 STORE_LOCK = RLock()
 REGISTER_LOCK = Lock()
+BUNDLE_PATH = Path(__file__).parent / 'bundles'
 
 def init_store() -> TIDEAPIStore:
     global STORE
@@ -112,19 +113,19 @@ def validate_tide_bundle(path: Path) -> str:
 
 # REGISTER
 
-def register_bundle(bundle_path:str) -> None:
-    try:
-        path = Path(bundle_path)
-        filename = path.name    
-    except Exception as e:
-        raise InternalExceptionError(str(e))
+def register_bundle(bundle_name:str, replace:bool=False) -> None:
+
+    validate_bundle_name(bundle_name)
+    path = BUNDLE_PATH / Path(bundle_name)
+    if path.parent != BUNDLE_PATH:
+        raise DataValidationError("bundle_name escaped root path!")
 
     if not path.exists():
-        raise APILookupError(f"Cannot find path {bundle_path}")
+        raise APILookupError(f"Cannot find path {bundle_name} in TIDE-API/bundles/")
 
     bundle = validate_tide_bundle(path)
-    
-    init_store().set(filename, bundle)
+
+    init_store().set(bundle_name, bundle, replace=replace)
 
 def register_trace(bundle_name: str) -> dict[str, str]:
     if isinstance(bundle_name, str):

@@ -2,8 +2,12 @@ import sqlite3
 from pathlib import Path 
 from contextlib import contextmanager
 from threading import RLock
-from tideapi.exceptions import InvalidAPIStoreConfigurationError, DataValidationError, APIStoreLookupError
-
+from tideapi.exceptions import (
+    APIStoreLookupError,
+    DataValidationError, 
+    AlreadyRegisteredError,
+    InvalidAPIStoreConfigurationError,
+)
 class TIDEAPIStore:
 
     ROOT = Path(__file__).parents[2]
@@ -65,15 +69,40 @@ class TIDEAPIStore:
                 if self.VERBOSE:
                     print("`bundles.db` initialised and configured.")    
 
-    def set(self, bundle_name: str, bundle: str) -> None:
+    def set(self, bundle_name: str, bundle: str, replace:bool=False) -> None:
+        if not isinstance(replace, bool):
+            raise DataValidationError("Store.set(replace=...) must be a bool!")
+
         if any(not isinstance(inp, str) for inp in [bundle_name, bundle]):
             raise DataValidationError("Store.set() only accepts str values")
+        
         with self.lock:
     	    with self.apistore as conn:
+                # exists
+                cursor = self.get_cursor(conn).execute(
+                    "SELECT EXISTS(SELECT 1 FROM bundles WHERE bundle_name = ?)", (bundle_name, )
+                )
+                
+                exists = bool(cursor.fetchone()[0])
+
+                if exists:
+                    if replace:
+                        cursor = self.get_cursor(conn).execute(
+                            "DELETE FROM bundles WHERE bundle_name=? RETURNING bundle", (bundle_name, )
+                        )
+                        row = cursor.fetchone()
+                        if row is None:
+                            raise APIStoreLookupError(f"Store.set(replace=True) via bundle_name: {bundle_name} not found!")                
+                    else:
+                        raise AlreadyRegisteredError(
+                            f"{bundle_name} is already registered in bundles.db" \
+                            "\n Please use .set(replace=True) to override bundle contents"
+                            )
+
                 self.get_cursor(conn).execute(
                     "INSERT INTO bundles (bundle_name, bundle)" \
                     "VALUES (?, ?)", (bundle_name, bundle) 
-	        )
+	            )
 
     def get(self, bundle_name: str) -> str:
         if not isinstance(bundle_name, str):
@@ -156,10 +185,6 @@ class TIDEAPIStore:
             cols = cursor.fetchall()
             assert len(cols) == len(expected_cols), "PRAGMA lrn mismatch"
             assert all([cols[idx] == expected_cols[idx] for idx, _ in enumerate(cols)]), f"PRAGMA col mismatch: {cols}"
-            #assert "TEXT" == str(cursor.execute("SELECT typeof (bundle) FROM bundles"))
-            #assert "TEXT" == str(cursor.execute("SELECT typeof (bundle_name) FROM bundles"))
-
-            return
         except Exception as e:
             if self.VERBOSE:
                 print("bundles.db` exists but its configuration is invalid") 

@@ -1,5 +1,5 @@
 from tideapi.persistence import TIDEAPIStore
-from tideapi.exceptions import InvalidAPIStoreConfigurationError, DataValidationError, APIStoreLookupError
+from tideapi.exceptions import AlreadyRegisteredError, InvalidAPIStoreConfigurationError, DataValidationError, APIStoreLookupError
 from pathlib import Path
 import sqlite3
 import pytest
@@ -134,12 +134,30 @@ def test_store_set(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
 
     apistore.set("example.json", "1234")
     rows = list(conn.execute("SELECT * FROM bundles"))
-    assert rows 
+    assert len(rows) == 1 
     assert rows[0] == ("example.json", "1234")
 
     # invalid inputs
     with pytest.raises(DataValidationError):
         apistore.set(1, lambda: None)
+    
+    # test get still works after failure returning correct data
+    assert apistore.get("example.json") == "1234"
+    # duplicate registration  
+    with pytest.raises(AlreadyRegisteredError):
+        apistore.set("example.json", "0")
+    
+    rows = list(conn.execute("SELECT * FROM bundles")) 
+    assert len(rows) == 1 
+    assert rows[0] == ("example.json", "1234")
+    assert apistore.get("example.json") == "1234"
+
+    # replace existing registration  
+    apistore.set("example.json", "4321", replace=True)
+    rows = list(conn.execute("SELECT * FROM bundles")) 
+    assert len(rows) == 1
+    assert rows[0] == ("example.json", "4321")
+    assert apistore.get("example.json") == "4321"
 
     conn.close()
 
@@ -155,7 +173,7 @@ def test_store_get(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     conn.commit()
 
     rows = list(conn.execute("SELECT * FROM bundles"))
-    assert rows 
+    assert len(rows) == 1 
     assert rows[0] == ("example.json", "1234")
 
     # Test

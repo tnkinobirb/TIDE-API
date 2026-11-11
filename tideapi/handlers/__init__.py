@@ -5,6 +5,7 @@ from tideapi_core.request_handlers import (
     inspect_exec,
     inspect_actor,
     register_trace,
+    register_bundle,
     redirect_to_docs,
     available_traces,
     available_bundles,
