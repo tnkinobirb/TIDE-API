@@ -109,11 +109,17 @@ def validate_tide_bundle(path: Path) -> str:
     require(isinstance(run["records"], list), "Invalid records")
     require(isinstance(run["ready_attempts"], list), "Invalid ready attempts")
 
+    try:
+        TIDE.from_bundle(bundle)
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise DataValidationError("Invalid TIDE bundle format") from exc
+
+    
     return raw
 
 # REGISTER
 
-def register_bundle(bundle_name:str, replace:bool=False) -> None:
+def register_bundle(bundle_name:str, replace:bool=False) -> dict[str, str]:
 
     validate_bundle_name(bundle_name)
     path = BUNDLE_PATH / Path(bundle_name)
@@ -126,6 +132,8 @@ def register_bundle(bundle_name:str, replace:bool=False) -> None:
     bundle = validate_tide_bundle(path)
 
     init_store().set(bundle_name, bundle, replace=replace)
+
+    return {'result': bundle_name}
 
 def register_trace(bundle_name: str) -> dict[str, str]:
     if isinstance(bundle_name, str):
