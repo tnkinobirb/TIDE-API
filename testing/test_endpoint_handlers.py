@@ -26,7 +26,7 @@ from tideapi.helpers.fastapi import initialise_fastapi_app
 from tideapi.exceptions import AlreadyRegisteredError, APILookupError, TraceLookupError, DataValidationError, APIStoreLookupError
 from fastapi.responses import RedirectResponse
 from fastapi.testclient import TestClient
-from tide_tooling import Trace, TIDE, TIDEError
+from tide_tooling import Trace, TIDE
 from tideapi.handlers import EXCEPTION_HANDLERS
 from fastapi import Query
 
