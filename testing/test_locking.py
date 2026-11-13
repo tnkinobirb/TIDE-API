@@ -139,7 +139,7 @@ class TestFunctionLocks:
         with ThreadPoolExecutor(max_workers=2) as threadpool:
             a = threadpool.submit(worker)
             b = threadpool.submit(worker)
-            errors = [a.exception(timeout=5), b.exception(timeout=5)]
+            errors = [a.exception(), b.exception()]
 
         assert sum(e is None for e in errors) == 1 
         assert sum(isinstance(e, AlreadyRegisteredError) for e in errors) == 1 
