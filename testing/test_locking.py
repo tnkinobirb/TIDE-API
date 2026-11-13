@@ -1,5 +1,6 @@
 from tideapi.exceptions import AlreadyRegisteredError 
-from tideapi.handlers import register_bundle
+from tideapi_core.request_handlers import init_store
+from tideapi.handlers import register_bundle, register_trace
 from tideapi.persistence import TIDEAPIStore
 from tideapi_core import request_handlers
 from threading import Thread, Barrier, Event
@@ -7,14 +8,17 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path 
 import sqlite3
 import pytest
+import json
+from typing import Callable, Any
 from threading import Lock, RLock 
 
 class ObservableLock:
-    def __init__(self, original_lock: Lock | RLock, attempting: Event, acquired: Event, continue_event: Event | None = None):
+    def __init__(self, original_lock: Lock | RLock, attempting: Event, acquired: Event, released_event: Event, continue_event: Event | None = None):
         self.original_lock = original_lock
         self.attempting = attempting
         self.acquired = acquired
         self.continue_event = continue_event
+        self.released = released_event 
 
     def __enter__(self):
         self.attempting.set()
@@ -30,12 +34,66 @@ class ObservableLock:
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.original_lock.release()
-        self.acquired.clear()
+        self.released.set()
         return False
 
 
+def locking_test_setups():
+    
+    def register_trace_context():
+        _, store = TestFunctionLocks.helper_init_store()
+        tide_bundle = (request_handlers.BUNDLE_PATH/'example.json').read_text(encoding='utf-8')
+        
+        with store.apistore as conn:
+            conn.execute("INSERT INTO bundles (bundle_name, bundle) VALUES (?, ?)", ('example.json', tide_bundle))
+            table_snapshot = TestFunctionLocks.snapshot_bundles_table(conn)
+        TestFunctionLocks.assert_valid_filled_table_state(table_snapshot, tide_bundle)
+     
+    
+    test_register_lock = (
+        register_trace_context,
+        register_trace,
+        None,
+        lambda result: result == {'result': list(request_handlers.TRACES.keys())[0]} and len(request_handlers.TRACES.keys()) == 1,
+        "example.json",
+        None,
+        False,
+        True,
+        "register",
+    )
+
+    test_tideapistore_lock = (
+        None,
+        register_bundle,
+        AlreadyRegisteredError,
+        lambda result: result == {"result": "example.json"},
+        "example.json",
+        None,
+        True,
+        True,
+        "store",
+    )
+    
+    test_store_initialisation_lock = (
+        None,
+        init_store,
+        None,
+        lambda result: result is request_handlers.STORE,
+        None,
+        None,
+        True,
+        False,
+        "store_init"
+    )
+    
+    return [
+        test_register_lock,
+        test_tideapistore_lock,
+        test_store_initialisation_lock
+    ]
 
 class TestFunctionLocks:
+    
     @pytest.fixture(autouse=True)
     def setup_monkeypatch(
         self,
@@ -50,10 +108,20 @@ class TestFunctionLocks:
         monkeypatch.setattr(request_handlers, "BUNDLE_PATH", bundle_dir)
         monkeypatch.setattr(request_handlers, "REGISTERED_BUNDLES", {})
         monkeypatch.setattr(request_handlers.TIDEAPIStore, "ROOT", tmp_path)
+    
+    def reset_state(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(request_handlers, "STORE", None)
+        monkeypatch.setattr(request_handlers, "TRACES", {})
+        monkeypatch.setattr(request_handlers, "BUNDLES", {})
+        monkeypatch.setattr(request_handlers, "REGISTERED_BUNDLES", {})
 
     # Helpers
-
-    def assert_empty_state(self, assert_store=True):
+    @staticmethod
+    def assert_empty_state(assert_store=True):
+                
         rh = request_handlers
         assert rh.TRACES == {}
         assert rh.BUNDLES == {}
@@ -61,24 +129,29 @@ class TestFunctionLocks:
         if assert_store:    
             assert rh.STORE is None
         else: assert isinstance(rh.STORE, TIDEAPIStore) 
-
-    def snapshot_bundles_table(self, conn: sqlite3.Connection):
+        
+        return True
+        
+    @staticmethod
+    def snapshot_bundles_table(conn: sqlite3.Connection):
         tables = list(conn.execute('PRAGMA table_list').fetchall())
         rows = list(conn.execute("SELECT * FROM bundles").fetchall())
         cols = list(conn.execute("PRAGMA table_info(bundles)").fetchall())
         return (tables, cols, rows)
     
-    def init_store(self):        
+    @staticmethod
+    def helper_init_store():        
         store = request_handlers.TIDEAPIStore()
         request_handlers.STORE = store
         
         with store.apistore as conn: 
-            store_snapshot = self.snapshot_bundles_table(conn)
+            store_snapshot = TestFunctionLocks.snapshot_bundles_table(conn)
         
         assert request_handlers.STORE is store 
         return store_snapshot, store
 
-    def assert_tables(self, tables: list[tuple]):
+    @staticmethod
+    def assert_tables(tables: list[tuple]):
         user_tables = [
             table for table in tables
             if not table[1].startswith("sqlite_")
@@ -88,30 +161,35 @@ class TestFunctionLocks:
             ('main', 'bundles', 'table', 2, 0, 0)
         ]
 
-    def assert_table_cols(self, cols:list):
+    @staticmethod
+    def assert_table_cols(cols:list):
         assert cols == [
             (0, 'bundle_name', 'TEXT', 0, None, 1),
             (1, 'bundle', 'TEXT', 1, None, 0),
         ]
 
-    def assert_valid_table_state(self, table_snapshot: tuple):
+    @staticmethod
+    def assert_valid_table_state(table_snapshot: tuple):
         tables = table_snapshot[0]
         cols = table_snapshot[1]
     
-        self.assert_tables(tables)
-        self.assert_table_cols(cols)
+        TestFunctionLocks.assert_tables(tables)
+        TestFunctionLocks.assert_table_cols(cols)
 
-    def assert_valid_filled_table_state(self, table_snapshot: tuple[list, list, list], tide_bundle:str):
-        self.assert_valid_table_state(table_snapshot)
+    @staticmethod
+    def assert_valid_filled_table_state(table_snapshot: tuple[list, list, list], tide_bundle:str):
+        TestFunctionLocks.assert_valid_table_state(table_snapshot)
         rows = table_snapshot[2]
-        self.assert_valid_rows(rows, tide_bundle=tide_bundle)
+        TestFunctionLocks.assert_valid_rows(rows, tide_bundle=tide_bundle)
 
-    def assert_empty_store_state(self, table_snapshot: tuple[list, list, list]):
-        self.assert_valid_table_state(table_snapshot)
+    @staticmethod
+    def assert_empty_store_state(table_snapshot: tuple[list, list, list]):
+        TestFunctionLocks.assert_valid_table_state(table_snapshot)
         rows = table_snapshot[2]
-        self.assert_valid_rows(rows, empty=True) 
+        TestFunctionLocks.assert_valid_rows(rows, empty=True) 
 
-    def assert_valid_rows(self, rows: list[tuple], empty=False, tide_bundle:str=None):
+    @staticmethod
+    def assert_valid_rows(rows: list[tuple], empty=False, tide_bundle:str=None):
         if empty:
             assert not rows 
         else:
@@ -122,14 +200,212 @@ class TestFunctionLocks:
             row = rows[0]
             assert row[0] == 'example.json'
             assert row[1] == tide_bundle
-
+    
+   
     # Tests
+
+    def test_init_store_concurrently_returns_equal_stores(self):
+        self.assert_empty_state()
+
+        barrier = Barrier(2)
+
+        def worker():
+            barrier.wait(timeout=5)
+            return init_store()
+
+        with ThreadPoolExecutor(max_workers=2) as threadpool:
+            a = threadpool.submit(worker)
+            b = threadpool.submit(worker)
+
+            store_a = a.result(timeout=5)
+            store_b = b.result(timeout=5)
+
+        assert store_a is store_b
+        assert request_handlers.STORE is store_a
+
+        stores = list(
+            request_handlers.TIDEAPIStore.ROOT.iterdir()
+        )
+
+        assert len(stores) == 1
+        assert stores[0].name == "bundles.db"
+
+    @pytest.mark.parametrize((
+        'init_context', 
+        'func', 
+        'expected_contention_error', 
+        'result_validator', 
+        'args', 
+        'kwargs', 
+        'assert_empty_store_init', 
+        'assert_filled_store_exit', 
+        'lock_kind'
+    ), locking_test_setups())
+    def test_tester(
+        self, 
+        monkeypatch: pytest.MonkeyPatch, 
+        tide_bundle: str,
+        init_context: Callable,
+        lock_kind:str,
+        func: Callable,
+        expected_contention_error: Exception | None,
+        result_validator: Callable,
+        args: Any | tuple[Any],
+        kwargs: dict | None,
+        assert_empty_store_init:bool, 
+        assert_filled_store_exit:bool,
+    ):
+
+        if not isinstance(args, tuple):
+            if args is None:
+                args = ()
+            else:
+                args = (args,)
+        if kwargs is None: 
+            kwargs = {}
+        
+        self.assert_empty_state()
+       
+        self.contention_tester(
+            monkeypatch=monkeypatch, 
+            tide_bundle=tide_bundle, 
+            init_context=init_context,
+            func=func, 
+            lock_kind=lock_kind,
+            expected_contention_error=expected_contention_error, 
+            result_validator=result_validator,
+            args=args,
+            assert_empty_store_init=assert_empty_store_init,
+            assert_filled_store_exit=assert_filled_store_exit,
+            **kwargs
+        )
+
+    def contention_tester(
+        self, 
+        monkeypatch: pytest.MonkeyPatch, 
+        tide_bundle: str,
+        lock_kind:str,
+        func: Callable,
+        init_context:Callable|None=None,
+        expected_contention_error:Exception|None=None,
+        result_validator:Callable|None=None,
+        args:tuple=None,
+        assert_empty_store_init=True,
+        assert_filled_store_exit=True,
+        **kwargs 
+    ):
+        self.assert_empty_state()
+
+        if not isinstance(args, tuple):
+            args = (args,)
+        
+        if lock_kind == 'store_init':
+            assert request_handlers.STORE is None
+            assert not list(
+                request_handlers.TIDEAPIStore.ROOT.iterdir()
+            )
+            snap = None
+            store = None 
+        else:
+            if init_context is not None:
+                init_context()
+                store = request_handlers.STORE
+
+                with store.apistore as conn:
+                    snap = self.snapshot_bundles_table(conn)
+            else:
+                snap, store = self.helper_init_store()
+
+            if assert_empty_store_init:
+                self.assert_empty_store_state(snap)
+            else:
+                self.assert_valid_filled_table_state(snap, tide_bundle)
+        
+        if lock_kind == "store":
+            lock_owner = store
+            lock_attribute = "lock"
+        elif lock_kind == "register":
+            lock_owner = request_handlers
+            lock_attribute = "REGISTER_LOCK"
+        elif lock_kind == 'store_init':
+            lock_owner = request_handlers
+            lock_attribute = "STORE_LOCK"
+        else:
+            raise ValueError(f"Unknown lock kind: {lock_kind}")
+
+        lock = getattr(lock_owner, lock_attribute)
+        
+        a_attempting = Event()
+        a_acquired = Event()
+        a_released = Event()
+        allow_a_to_continue = Event()
+
+        b_attempting = Event()
+        b_acquired = Event()
+        b_released = Event()
+
+        monkeypatch.setattr(lock_owner, lock_attribute, ObservableLock(lock, a_attempting, a_acquired, a_released, allow_a_to_continue))
+
+
+        with ThreadPoolExecutor(max_workers=2) as threadpool:
+            a = threadpool.submit(func, *args, **kwargs)
+
+            assert a_attempting.wait(timeout=5)
+            assert a_acquired.wait(timeout=5)
+
+            monkeypatch.setattr(lock_owner, lock_attribute, ObservableLock(lock, b_attempting, b_acquired, b_released))
+
+
+            b = threadpool.submit(func, *args, **kwargs)
+
+            assert b_attempting.wait(timeout=5)
+
+            # assert `a` has acquired its lock
+            assert a_acquired.is_set()
+            assert lock.locked()
+
+            # assert `b` has attempted lock acquisition but does not yet own it.
+            assert not b_acquired.is_set()
+            assert lock.locked()
+
+            # allow `a` to complete registration and release the lock.
+            allow_a_to_continue.set()
+            
+            # allow `a` has completed and released its lock.
+            assert result_validator(a.result(timeout=5))
+            assert a_released.wait(timeout=5)
+
+            # assert `b` has now acquired the lock.
+            assert b_acquired.wait(timeout=5)
+
+            if expected_contention_error is not None:
+                with pytest.raises(expected_contention_error):
+                    b.result(timeout=5)
+            else:
+                if not isinstance(result_validator, Callable):
+                    raise RuntimeError('result_validator was not a callable!')
+                assert result_validator(b.result(timeout=5))
+            assert b_released.is_set()
+
+            errors = [a.exception(timeout=5), b.exception(timeout=5)]
+        num_of_expected_errors = 0 if expected_contention_error is None else 1
+        assert sum(isinstance(error, Exception) for error in errors) == num_of_expected_errors
+
+        if lock_kind == "store_init":
+            store = request_handlers.STORE
+
+        with store.apistore as conn:
+            snap = self.snapshot_bundles_table(conn)
+            if assert_filled_store_exit:
+                self.assert_valid_filled_table_state(snap, tide_bundle)
+            else:
+                self.assert_empty_store_state(snap)
     
     def test_register_bundle_barrier(self, tide_bundle: str):
         self.assert_empty_state()
         barrier = Barrier(2, timeout=2)
 
-        empty_snap, store = self.init_store()
+        empty_snap, store = self.helper_init_store()
         self.assert_empty_store_state(empty_snap)
         
         def worker():
@@ -146,68 +422,65 @@ class TestFunctionLocks:
 
         with store.apistore as conn:
             self.assert_valid_filled_table_state(self.snapshot_bundles_table(conn), tide_bundle)
-    
 
     def test_register_bundle_contention(self, monkeypatch, tide_bundle: str):
-        self.assert_empty_state()
-        empty_snap, store = self.init_store()
-        self.assert_empty_store_state(empty_snap)
+            self.assert_empty_state()
+            empty_snap, store = self.helper_init_store()
+            self.assert_empty_store_state(empty_snap)
 
-        store_lock = store.lock
+            store_lock = store.lock
 
-        a_attempting = Event()
-        a_acquired = Event()
-        allow_a_to_continue = Event()
+            a_attempting = Event()
+            a_acquired = Event()
+            a_released = Event()
+            allow_a_to_continue = Event()
 
-        b_attempting = Event()
-        b_acquired = Event()
+            b_attempting = Event()
+            b_acquired = Event()
+            b_released = Event()
 
-        monkeypatch.setattr(store, "lock", ObservableLock(store_lock, a_attempting, a_acquired, allow_a_to_continue))
+            monkeypatch.setattr(store, "lock", ObservableLock(store_lock, a_attempting, a_acquired, a_released, allow_a_to_continue))
 
-        with ThreadPoolExecutor(max_workers=2) as threadpool:
-            a = threadpool.submit(register_bundle, "example.json")
+            with ThreadPoolExecutor(max_workers=2) as threadpool:
+                a = threadpool.submit(register_bundle, "example.json")
 
-            assert a_attempting.wait(timeout=5)
-            assert a_acquired.wait(timeout=5)
+                assert a_attempting.wait(timeout=5)
+                assert a_acquired.wait(timeout=5)
 
-            monkeypatch.setattr(store, "lock", ObservableLock(store_lock, b_attempting, b_acquired))
+                monkeypatch.setattr(store, "lock", ObservableLock(store_lock, b_attempting, b_acquired, b_released))
 
-            b = threadpool.submit(register_bundle, "example.json")
+                b = threadpool.submit(register_bundle, "example.json")
 
-            assert b_attempting.wait(timeout=5)
+                assert b_attempting.wait(timeout=5)
 
-            # assert `a` has acquired its lock
-            assert a_acquired.is_set()
-            assert store_lock.locked()
+                # assert `a` has acquired its lock
+                assert a_acquired.is_set()
+                assert store_lock.locked()
 
-            # assert `b` has attempted lock acquisition but does not yet own it.
-            assert not b_acquired.is_set()
-            assert store_lock.locked()
+                # assert `b` has attempted lock acquisition but does not yet own it.
+                assert not b_acquired.is_set()
+                assert store_lock.locked()
 
-            # allow `a` to complete registration and release the lock.
-            allow_a_to_continue.set()
-            
-            # allow `a` has completed and released its lock.
-            assert a.result(timeout=5) == {
-                "result": "example.json",
-            }
-            assert not a_acquired.is_set()
-            
-            # assert `b` has now acquired the lock.
-            assert b_acquired.wait(timeout=5)
-            assert store_lock.locked()
-
-            with pytest.raises(AlreadyRegisteredError):
-                b.result(timeout=5)
-
-            errors = [a.exception(timeout=5), b.exception(timeout=5)]
-
-        assert sum(error is None for error in errors) == 1
-        assert sum(isinstance(error, AlreadyRegisteredError) for error in errors) == 1
-
-        with store.apistore as conn:
-            self.assert_valid_filled_table_state(self.snapshot_bundles_table(conn), tide_bundle)
-
-
+                # allow `a` to complete registration and release the lock.
+                allow_a_to_continue.set()
                 
+                # allow `a` has completed and released its lock.
+                assert a.result(timeout=5) == {
+                    "result": "example.json",
+                }
+                assert a_released.is_set()
+                
+                # assert `b` has now acquired the lock.
+                assert b_acquired.wait(timeout=5)
+                assert store_lock.locked()
 
+                with pytest.raises(AlreadyRegisteredError):
+                    b.result(timeout=5)
+
+                errors = [a.exception(timeout=5), b.exception(timeout=5)]
+
+            assert sum(error is None for error in errors) == 1
+            assert sum(isinstance(error, AlreadyRegisteredError) for error in errors) == 1
+
+            with store.apistore as conn:
+                self.assert_valid_filled_table_state(self.snapshot_bundles_table(conn), tide_bundle)
