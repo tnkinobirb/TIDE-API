@@ -1,19 +1,19 @@
 from fastapi import Request  
 from fastapi.responses import JSONResponse
 from tideapi_core.exceptions import (
-    APILookupError,
-    TraceLookupError,
-    APIStoreLookupError, #  404
-    DataValidationError,
-    InternalExceptionError,
+    APILookupError,         # 404
+    TraceLookupError,       # 404
+    APIStoreLookupError,    # 404
+    DataValidationError,    # 400
     AlreadyRegisteredError, # 409
+    InternalExceptionError, # 500
 )
 
 def handle_trace_lookup_exception(request: Request, exc: TraceLookupError):
     return JSONResponse(
         status_code=404,
         content={"result":{
-            "str": f"Oops! {str(exc)}. Now, where was i....?",
+            "str": f"{str(exc)}",
             "error": type(exc).__name__
         }},
     )
@@ -22,16 +22,16 @@ def handle_api_lookup_exception(request: Request, exc: APILookupError):
     return JSONResponse(
         status_code=404,
         content={"result":{
-            "str": f"Oops! {str(exc)}. Oh - There goes a bird....",
+            "str": f"{str(exc)}",
             "error": type(exc).__name__
         }},
     )
 
 def handle_data_validation_exception(request: Request, exc: DataValidationError):
     return JSONResponse(
-        status_code=418, # or 400 for seriousness
+        status_code=400, 
         content={"result":{
-            "str": f"Cannae make a cawfee with a teepaet! {str(exc)}. |:<",
+            "str": f"{str(exc)}",
             "error": type(exc).__name__
         }},
     )
@@ -40,7 +40,7 @@ def handle_internal_exception(request: Request, exc: InternalExceptionError):
     return JSONResponse(
         status_code=500,
         content={"result":{
-            "str": f"Ah - my bad...: {str(exc)}. Sorry!",
+            "str": f"{str(exc)}",
             "error": type(exc).__name__
         }},
     )
@@ -55,8 +55,7 @@ def handle_already_registered_exception(request: Request, exc: AlreadyRegistered
     )
 
 
-# EXCEPTION HANDLERS DICT
-
+# FASTAPI EXCEPTION HANDLERS DICTIONARY 
 EXCEPTION_HANDLERS = {
     APILookupError: handle_api_lookup_exception,
     TraceLookupError: handle_trace_lookup_exception,

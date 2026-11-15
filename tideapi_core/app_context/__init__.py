@@ -1,3 +1,2 @@
-BUNDLES = {}
-REGISTERED_BUNDLES = {}
+STORE = None
 TRACES = {}

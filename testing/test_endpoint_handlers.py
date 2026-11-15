@@ -1,34 +1,44 @@
 
+import json
+import pytest
+import inspect 
+import sqlite3
+
+from pathlib import Path
+from typing import Any, Callable
+from fastapi.testclient import TestClient
+from fastapi.responses import RedirectResponse
+
+import tideapi_core.request_handlers as request_handlers
+from tide_tooling import Trace, TIDE
+from tideapi.handlers import EXCEPTION_HANDLERS
+from tideapi.persistence import TIDEAPIStore
+from tideapi.helpers.fastapi import initialise_fastapi_app
 from tideapi.handlers import (
     init_store,
     show_trace,
     inspect_ref,
     inspect_exec,
     inspect_actor,
-    register_trace,
-    register_bundle,
+    get_init_meta,
+    load_trace,
+    persist_bundle,
     redirect_to_docs,
-    available_traces,
-    available_bundles,
-    bundle_name_by_trace_id,
-    ENDPOINT_HANDLERS,
-    INSPECT_ENDPOINTS
+    local_bundles,
+    loaded_traces,
+    persisted_bundles,
+    TIDE_INSPECT_ENDPOINTS
 )
-import json
-import pytest
-import inspect 
-import sqlite3
-from pathlib import Path
-from typing import Any, Callable
-import tideapi_core.request_handlers as request_handlers
-from tideapi.persistence import TIDEAPIStore
-from tideapi.helpers.fastapi import initialise_fastapi_app
-from tideapi.exceptions import AlreadyRegisteredError, APILookupError, TraceLookupError, DataValidationError, APIStoreLookupError
-from fastapi.responses import RedirectResponse
-from fastapi.testclient import TestClient
-from tide_tooling import Trace, TIDE
-from tideapi.handlers import EXCEPTION_HANDLERS
-from fastapi import Query
+from tideapi.exceptions import (
+    APILookupError, 
+    TraceLookupError, 
+    APIStoreLookupError,
+    DataValidationError, 
+    AlreadyRegisteredError, 
+)
+
+UNKNOWN_STR = 'unknown'
+UNKNOWN_INT = 99999*9999*999*99*9
 
 def assert_endpoint(endpoint:dict[str, Any], path:str, methods:list[str]|set[str], function:Callable[..., Any]) -> None:
     assert endpoint['methods'] == methods
@@ -46,9 +56,14 @@ def assert_endpoint_configuration(endpoints:dict[str, dict[str, Any]], path:str,
     expected_result = function(**kwargs) if execute else None
     return endpoint, expected_result
 
-def endpoint_tester(method:str, endpoint:dict[str, Any], status_code:int, expected_result:dict[str, Any]|None=None, replace:list[tuple[str,str]]|None=None, compare_result:bool=True, **kwargs:Any) -> tuple[TestClient, Any]:
-    app = initialise_fastapi_app(ENDPOINT_HANDLERS=[endpoint], EXCEPTION_HANDLERS=EXCEPTION_HANDLERS)
-    client = TestClient(app, raise_server_exceptions=False)
+def endpoint_tester(method:str, endpoint:dict[str, Any], status_code:int, expected_result:dict[str, Any]|None=None, replace:list[tuple[str,str]]|None=None, compare_result:bool=True, use_client:TestClient|None=None, **kwargs:Any) -> tuple[TestClient, Any]:
+    if use_client is None:
+        app = initialise_fastapi_app(ENDPOINT_HANDLERS=[endpoint], EXCEPTION_HANDLERS=EXCEPTION_HANDLERS)
+        client = TestClient(app, raise_server_exceptions=False)
+    else:
+        if not isinstance(use_client, TestClient):
+            raise RuntimeError(f"endpoint_test(use_client=...) must be a fastapi.testclient.TestClient, was a {type(use_client)}")
+        client = use_client
     
     path = endpoint['path']
     if replace:
@@ -64,37 +79,30 @@ def endpoint_tester(method:str, endpoint:dict[str, Any], status_code:int, expect
         assert rjson == expected_result
     return client, response
 
-UNKNOWN_INT = 99999*9999*999*99*9
-UNKNOWN_STR = 'unknown'
-
 class TestTIDEEndpoints:
 
     @pytest.fixture(autouse=True)
     def setup_monkeypatch(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        sample_bundle_uuid: str,
         sample_bundle_name: str,
-        sample_trace_uuid: str,
         sample_trace: Any
     ) -> None:
-        monkeypatch.setattr(request_handlers, "TRACES", {sample_trace_uuid: sample_trace})
-        monkeypatch.setattr(request_handlers, "BUNDLES", {sample_bundle_uuid: sample_bundle_name})
-        monkeypatch.setattr(request_handlers, "REGISTERED_BUNDLES", {sample_bundle_name: sample_trace_uuid})
+        monkeypatch.setattr(request_handlers, "TRACES", {sample_bundle_name: sample_trace})
 
-    def test_trace_show_is_serialisable(self, sample_trace_uuid: str) -> None:
-        json.dumps(show_trace(sample_trace_uuid))
+    def test_trace_show_is_serialisable(self, sample_bundle_name: str) -> None:
+        json.dumps(show_trace(sample_bundle_name))
 
-    def test_trace_inspect_ref_is_serialisable(self, sample_trace_uuid: str, sample_ref: str) -> None:
-        json.dumps(inspect_ref(sample_trace_uuid, sample_ref))
+    def test_trace_inspect_ref_is_serialisable(self, sample_bundle_name: str, sample_ref: str) -> None:
+        json.dumps(inspect_ref(sample_bundle_name, sample_ref))
 
-    def test_show_trace(self, endpoints: dict[str, dict[str, Any]], sample_trace_uuid: str) -> None:
+    def test_show_trace(self, endpoints: dict[str, dict[str, Any]], sample_bundle_name: str) -> None:
         endpoint, expected_result = assert_endpoint_configuration(
             endpoints,
             methods=['GET'],
             function=show_trace,
-            trace_id=sample_trace_uuid,
-            path='/traces/{trace_id}',
+            bundle_name=sample_bundle_name,
+            path='/traces/{bundle_name}',
         )
 
         endpoint_tester(
@@ -102,20 +110,20 @@ class TestTIDEEndpoints:
             endpoint=endpoint, 
             status_code=200, 
             expected_result=expected_result, 
-            replace=[('trace_id', sample_trace_uuid)]
+            replace=[('bundle_name', sample_bundle_name)]
         )
 
         with pytest.raises(APILookupError):
             show_trace(UNKNOWN_STR) 
     
-    def test_inspect_ref(self, endpoints: dict[str, dict[str, Any]], sample_trace_uuid: str, sample_ref: str) -> None:
+    def test_inspect_ref(self, endpoints: dict[str, dict[str, Any]], sample_bundle_name: str, sample_ref: str) -> None:
         endpoint, expected_result = assert_endpoint_configuration(
             endpoints,
             ref=sample_ref,
             methods=['GET'],
             function=inspect_ref,
-            trace_id=sample_trace_uuid,
-            path='/traces/{trace_id}/ref',
+            bundle_name=sample_bundle_name,
+            path='/traces/{bundle_name}/ref',
         )
 
         endpoint_tester(
@@ -123,20 +131,20 @@ class TestTIDEEndpoints:
             endpoint=endpoint, 
             status_code=200, 
             expected_result=expected_result, 
-            replace=[('trace_id', sample_trace_uuid)], 
+            replace=[('bundle_name', sample_bundle_name)], 
             params={'ref':sample_ref}
         )
 
         with pytest.raises(TraceLookupError):
-            inspect_ref(trace_id=sample_trace_uuid, ref=UNKNOWN_STR)
+            inspect_ref(bundle_name=sample_bundle_name, ref=UNKNOWN_STR)
 
-    def test_inspect_exec(self, endpoints: dict[str, dict[str, Any]], sample_trace_uuid: str, sample_exec: int) -> None:
+    def test_inspect_exec(self, endpoints: dict[str, dict[str, Any]], sample_bundle_name: str, sample_exec: int) -> None:
         endpoint, expected_result = assert_endpoint_configuration(
             endpoints,
             methods=['GET'],
             function=inspect_exec,
-            path='/traces/{trace_id}/exec',
-            trace_id=sample_trace_uuid,
+            path='/traces/{bundle_name}/exec',
+            bundle_name=sample_bundle_name,
             ref=sample_exec
         )
 
@@ -145,21 +153,21 @@ class TestTIDEEndpoints:
             endpoint=endpoint, 
             status_code=200, 
             expected_result=expected_result, 
-            replace=[('trace_id', sample_trace_uuid)], 
+            replace=[('bundle_name', sample_bundle_name)], 
             params={'ref':sample_exec}
         )
 
         with pytest.raises(TraceLookupError):
-            inspect_exec(sample_trace_uuid, ref=UNKNOWN_INT)
+            inspect_exec(sample_bundle_name, ref=UNKNOWN_INT)
 
-    def test_inspect_actor(self, endpoints: dict[str, dict[str, Any]], sample_trace_uuid: str, sample_actor: str) -> None:
+    def test_inspect_actor(self, endpoints: dict[str, dict[str, Any]], sample_bundle_name: str, sample_actor: str) -> None:
         endpoint, expected_result = assert_endpoint_configuration(
             endpoints,
             ref=sample_actor,
             methods=['GET'],
             function=inspect_actor,
-            trace_id=sample_trace_uuid,
-            path='/traces/{trace_id}/actor',
+            bundle_name=sample_bundle_name,
+            path='/traces/{bundle_name}/actor',
         )
 
         endpoint_tester(
@@ -167,12 +175,12 @@ class TestTIDEEndpoints:
             endpoint=endpoint,
             status_code=200,
             expected_result=expected_result,
-            replace=[('trace_id', sample_trace_uuid)],
+            replace=[('bundle_name', sample_bundle_name)],
             params={'ref': sample_actor},
         )
 
         with pytest.raises(TraceLookupError):
-            inspect_actor(trace_id=sample_trace_uuid, ref=UNKNOWN_STR)
+            inspect_actor(bundle_name=sample_bundle_name, ref=UNKNOWN_STR)
 
         
 class TestStoreHelpers:
@@ -181,19 +189,15 @@ class TestStoreHelpers:
     def setup_monkeypatch(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        sample_bundle_uuid: str,
         sample_bundle_name: str,
-        sample_trace_uuid: str,
         sample_trace: Any,
         bundle_dir: Path,
         tmp_path: Path
         
     ) -> None:
         monkeypatch.setattr(request_handlers, "STORE", None)
-        monkeypatch.setattr(request_handlers, "TRACES", {sample_trace_uuid: sample_trace})
-        monkeypatch.setattr(request_handlers, "BUNDLES", {sample_bundle_uuid: sample_bundle_name})
+        monkeypatch.setattr(request_handlers, "TRACES", {sample_bundle_name: sample_trace})
         monkeypatch.setattr(request_handlers, "BUNDLE_PATH", bundle_dir)
-        monkeypatch.setattr(request_handlers, "REGISTERED_BUNDLES", {sample_bundle_name: sample_trace_uuid})
         monkeypatch.setattr(request_handlers.TIDEAPIStore, "ROOT", tmp_path)
 
     def test_apistore_init(self, tide_bundle):
@@ -214,10 +218,10 @@ class TestStoreHelpers:
         trace = TIDE.from_bundle(json.loads(bundle_json))
         trace.show()
 
-        # init_store re-uses already registered store
+        # store re-uses already registered store
         assert init_store() is STORE 
 
-    def test_register_bundle(self, monkeypatch:pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory, endpoints: dict[str, dict[str, Any]], bundle_dir, tide_bundle):
+    def test_persist_bundle(self, monkeypatch:pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory, endpoints: dict[str, dict[str, Any]], bundle_dir, tide_bundle):
         def assert_rows():
             with sqlite3.connect(request_handlers.TIDEAPIStore.ROOT / "bundles.db") as conn:
                 rows = conn.execute("SELECT * FROM bundles").fetchall()
@@ -227,15 +231,13 @@ class TestStoreHelpers:
         with monkeypatch.context() as m:
             m.setattr(request_handlers, "STORE", None)
             m.setattr(request_handlers, "TRACES", {})
-            m.setattr(request_handlers, "BUNDLES", {})
-            m.setattr(request_handlers, "REGISTERED_BUNDLES", {})
             m.setattr(request_handlers, "BUNDLE_PATH", bundle_dir)
             m.setattr(request_handlers.TIDEAPIStore, "ROOT", tmp_path_factory.mktemp("123")) 
             assert request_handlers.STORE is None
             endpoint, expected_result = assert_endpoint_configuration(
                 endpoints,
                 methods=['POST'],
-                function=register_bundle,
+                function=persist_bundle,
                 path='/register/bundle/{bundle_name}',
                 bundle_name = "example.json" 
             )
@@ -274,7 +276,7 @@ class TestStoreHelpers:
         )
 
         endpoint_tester(
-            status_code=418, 
+            status_code=400, 
             endpoint=endpoint, 
             compare_result=False, 
             method=endpoint['methods'][0],
@@ -289,12 +291,12 @@ class TestStoreHelpers:
         assert_rows()
 
         with pytest.raises(DataValidationError):
-            register_bundle('../example.json')
+            persist_bundle('../example.json')
         assert_rows()
                         
 
         with pytest.raises(AlreadyRegisteredError):
-            register_bundle('example.json')
+            persist_bundle('example.json')
         assert_rows()
     
 
@@ -304,14 +306,10 @@ class TestAPIHelperEndpoints:
     def setup_monkeypatch(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        sample_bundle_uuid: str,
         sample_bundle_name: str,
-        sample_trace_uuid: str,
         sample_trace: Any
     ) -> None:
-        monkeypatch.setattr(request_handlers, "TRACES", {sample_trace_uuid: sample_trace})
-        monkeypatch.setattr(request_handlers, "BUNDLES", {sample_bundle_uuid: sample_bundle_name})
-        monkeypatch.setattr(request_handlers, "REGISTERED_BUNDLES", {sample_bundle_name: sample_trace_uuid})
+        monkeypatch.setattr(request_handlers, "TRACES", {sample_bundle_name: sample_trace})
 
     def test_redirect_to_docs(self, endpoints: dict[str, dict[str, Any]]) -> None:
         endpoint, expected_result = assert_endpoint_configuration(
@@ -322,7 +320,7 @@ class TestAPIHelperEndpoints:
         )
 
         assert isinstance(expected_result, RedirectResponse) 
-        assert expected_result.headers['location'] == 'docs/'
+        assert expected_result.headers['location'] == '/docs'
         assert expected_result.status_code == 307
 
         app = initialise_fastapi_app(ENDPOINT_HANDLERS=[endpoint])
@@ -330,13 +328,40 @@ class TestAPIHelperEndpoints:
         response = client.get('/', follow_redirects=False)
 
         assert response.status_code == 307
-        assert response.headers['location'] == 'docs/'
+        assert response.headers['location'] == '/docs'
 
-    def test_available_traces(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_local_bundles(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch, bundle_dir: Path) -> None:
+        with monkeypatch.context() as m:
+            m.setattr(request_handlers, "BUNDLE_PATH", bundle_dir)
+            (bundle_dir / "invalid.txt").write_text("invalid", encoding="utf-8")
+
+            endpoint, expected_result = assert_endpoint_configuration(
+                endpoints,
+                methods=['GET'],
+                function=local_bundles,
+                path='/local/bundles',
+            )
+
+            client, _ = endpoint_tester(
+                method=endpoint['methods'][0],
+                endpoint=endpoint,
+                status_code=200,
+                expected_result=expected_result,
+            )
+
+            assert expected_result == {"result": ["*example.json"]}
+
+            m.setattr(request_handlers, "TRACES", {})
+            response = client.get("/local/bundles")
+
+            assert response.status_code == 200
+            assert response.json() == {"result": ["example.json"]}
+
+    def test_loaded_traces(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch) -> None:
         endpoint, expected_result = assert_endpoint_configuration(
             endpoints,
             methods=['GET'],
-            function=available_traces,
+            function=loaded_traces,
             path='/traces',
         )
 
@@ -353,10 +378,9 @@ class TestAPIHelperEndpoints:
             response = client.get("/traces")
             
             assert response.status_code == 200
-            assert response.json() == {"result": {}}
+            assert response.json() == {"result": []}
 
-
-    def test_available_bundles(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> None:
+    def test_persisted_bundles(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> None:
         
         # Test no bundles
         with monkeypatch.context() as m:
@@ -376,7 +400,7 @@ class TestAPIHelperEndpoints:
             endpoint, expected_result = assert_endpoint_configuration(
                 endpoints,
                 methods=['GET'],
-                function=available_bundles,
+                function=persisted_bundles,
                 path='/bundles',
             )
             
@@ -398,34 +422,8 @@ class TestAPIHelperEndpoints:
 
             assert response.status_code == 200
             assert response.json() == {"result": []}
-        
 
-
-
-    def test_bundle_name_by_trace_id(
-        self, endpoints: dict[str, dict[str, Any]], sample_trace_uuid: str
-    ) -> None:
-        endpoint, expected_result = assert_endpoint_configuration(
-            endpoints,
-            methods=['GET'],
-            function=bundle_name_by_trace_id,
-            trace_id=sample_trace_uuid,
-            path='/traces/{trace_id}/bundle_name',
-        )
-
-        endpoint_tester(
-            method=endpoint['methods'][0],
-            endpoint=endpoint,
-            status_code=200,
-            expected_result=expected_result,
-            replace=[('trace_id', sample_trace_uuid)],
-        )
-
-        with pytest.raises(APILookupError):
-            bundle_name_by_trace_id(UNKNOWN_STR)
-        
-
-    @pytest.mark.parametrize("endpoint", INSPECT_ENDPOINTS)
+    @pytest.mark.parametrize("endpoint", TIDE_INSPECT_ENDPOINTS)
     def test_inspect_endpoints_raises_api_error_on_unknown_trace(self, endpoint: dict[str, Any]) -> None:
         import inspect 
         
@@ -433,11 +431,11 @@ class TestAPIHelperEndpoints:
         parameters = inspect.signature(function).parameters
 
         assert len(parameters) >= 1
-        assert "trace_id" in parameters
+        assert "bundle_name" in parameters
     
         for name, parameter in parameters.items():
             if repr(parameter.annotation) == "<class 'str'>":
-                if name == "trace_id":
+                if name == "bundle_name":
                     continue
                 ref = UNKNOWN_STR   
             elif repr(parameter.annotation) == "<class 'int'>":
@@ -447,12 +445,12 @@ class TestAPIHelperEndpoints:
         
         with pytest.raises(APILookupError):
             if len(parameters) == 1:
-                function(trace_id=UNKNOWN_STR)
+                function(bundle_name=UNKNOWN_STR)
             else:
-                function(trace_id=UNKNOWN_STR, ref=ref)
+                function(bundle_name=UNKNOWN_STR, ref=ref)
 
-    @pytest.mark.parametrize("endpoint", [endpoint for endpoint in INSPECT_ENDPOINTS if len(inspect.signature(endpoint['function']).parameters) > 1])
-    def test_inspect_endpoints_raises_trace_lookup_error_on_unknown_ref(self, sample_trace_uuid: str, endpoint: dict[str, Any]) -> None:
+    @pytest.mark.parametrize("endpoint", [endpoint for endpoint in TIDE_INSPECT_ENDPOINTS if len(inspect.signature(endpoint['function']).parameters) > 1])
+    def test_inspect_endpoints_raises_trace_lookup_error_on_unknown_ref(self, sample_bundle_name: str, endpoint: dict[str, Any]) -> None:
         
         
         function = endpoint['function']
@@ -461,8 +459,8 @@ class TestAPIHelperEndpoints:
 
         for name, parameter in parameters.items():
             if repr(parameter.annotation) == "<class 'str'>":
-                if name == "trace_id":
-                    replace_params[f'{parameter.name}'] = sample_trace_uuid
+                if name == "bundle_name":
+                    replace_params[f'{parameter.name}'] = sample_bundle_name
                 else:
                     replace_params[f'{parameter.name}'] = UNKNOWN_STR   
             elif repr(parameter.annotation) == "<class 'int'>":
@@ -485,12 +483,10 @@ class TestAPIHelperEndpoints:
             TIDE.from_bundle(json.loads('{"invalid": "json"}'))
 
 
-    def test_register_trace(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch, tmp_path_factory, tide_bundle:str) -> None:
+    def test_load_trace(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory, tide_bundle:str, bundle_dir:Path) -> None:
 
         def init_context(m: pytest.MonkeyPatch, root):
-            m.setattr(request_handlers, "BUNDLES", {})
             m.setattr(request_handlers, "TRACES", {})
-            m.setattr(request_handlers, "REGISTERED_BUNDLES", {})
             m.setattr(request_handlers.TIDEAPIStore, "ROOT", root)
             m.setattr(request_handlers, "STORE", None)
 
@@ -499,28 +495,17 @@ class TestAPIHelperEndpoints:
 
         def assert_context():
             TRACES = request_handlers.TRACES
-            BUNDLES = request_handlers.BUNDLES
-            REGISTERED_BUNDLES = request_handlers.REGISTERED_BUNDLES
 
             assert len(TRACES) == 1
-            assert len(BUNDLES) == 1
-            assert len(REGISTERED_BUNDLES) == 1
             assert len(request_handlers.STORE.bundles()) == 1  
 
-            trace_id = list(TRACES.keys())[0]
-            assert list(BUNDLES.values())[0] == 'example.json'
-            assert REGISTERED_BUNDLES['example.json'] == trace_id
+            bundle_name = list(TRACES.keys())[0]
             
-            assert trace_id in TRACES
-            assert 'example.json' in REGISTERED_BUNDLES
-            assert isinstance(TRACES[trace_id]['trace'], Trace)
-            assert TRACES[trace_id]['bundle_name'] == 'example.json' 
-            assert TRACES[trace_id]['bundle_id'] == list(BUNDLES.keys())[0]
+            assert bundle_name in TRACES
+            assert isinstance(TRACES[bundle_name], Trace)
 
         def assert_empty_context():
             assert len(request_handlers.TRACES) == 0
-            assert len(request_handlers.BUNDLES) == 0
-            assert len(request_handlers.REGISTERED_BUNDLES) == 0
 
         
         with monkeypatch.context() as m:
@@ -542,26 +527,26 @@ class TestAPIHelperEndpoints:
             )
             
             with pytest.raises(DataValidationError):
-                register_bundle("invalid.json")
+                persist_bundle("invalid.json")
 
             assert init_store().bundles() == []
 
             # Test missing bundle
             assert_empty_context()
-            with pytest.raises(APIStoreLookupError):
-                register_trace('unknown.json')
+            with pytest.raises(APILookupError):
+                load_trace('unknown.json')
             
             # Test invalid input
             assert_empty_context()
             with pytest.raises(DataValidationError):
-                register_trace('path/to/dir.json')
+                load_trace('path/to/dir.json')
 
             store.set("example.json", '{"fake_bundle": "lol"}')
             assert len(store.bundles()) == 1
 
             assert_empty_context()
             with pytest.raises(TypeError):
-                register_trace("example.json")
+                load_trace("example.json")
             
             assert_empty_context()
         
@@ -569,23 +554,21 @@ class TestAPIHelperEndpoints:
             store = init_context(m, tmp_path_factory.mktemp("temp"))
             store.set("example.json", tide_bundle)
             assert len(store.bundles()) == 1
-            
-
-            
+        
             endpoint, expected_result = assert_endpoint_configuration(
                 endpoints,
                 methods=['POST'],
-                function=register_trace,
+                function=load_trace,
                 path='/register/trace/{bundle_name}',
                 bundle_name="example.json",
             )
-            trace_id = list(request_handlers.TRACES.keys())[0]
+            bundle_name = list(request_handlers.TRACES.keys())[0]
 
-            # duplicate call returns same trace_id and does not change structure
-            result = register_trace('example.json')
+            # duplicate call returns same bundle_name and does not change structure
+            result = load_trace('example.json')
             assert_context()
-            duplicate_id = list(result.values())[0]
-            assert trace_id == duplicate_id
+            duplicate_name = list(result.values())[0]
+            assert bundle_name == duplicate_name
             assert result == expected_result
 
         with monkeypatch.context() as m:
@@ -604,18 +587,74 @@ class TestAPIHelperEndpoints:
             assert_context()
             
             with pytest.raises(DataValidationError):
-                register_trace('path/to/dir.json')
+                load_trace('path/to/dir.json')
             assert_context()
             
-            with pytest.raises(APIStoreLookupError):
-                register_trace('unknown.json')
+            with pytest.raises(APILookupError):
+                load_trace('unknown.json')
             assert_context()
 
         with monkeypatch.context() as m:
-            store = init_context(m, tmp_path_factory.mktemp("store"))
+            m.setattr(request_handlers, 'BUNDLE_PATH', bundle_dir)
+            store = init_context(m, tmp_path_factory.mktemp("auto-reg"))
+            assert len(store.bundles()) == 0
+
+            assert list(file.name for file in bundle_dir.iterdir()) == ['example.json']
             
-                            
+            endpoint_tester(
+                method=endpoint['methods'][0],
+                endpoint=endpoint,
+                status_code=200,
+                replace=[('bundle_name', 'example.json')],
+                compare_result=False,
+            )
+            
+            assert_context()
+            
+            with pytest.raises(DataValidationError):
+                load_trace('path/to/dir.json')
+            assert_context()
+            
+            with pytest.raises(APILookupError):
+                load_trace('unknown.json')
+            assert_context()
 
+    def test_get_init_meta(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch, api_db:pytest.TempPathFactory) -> None:
+        def test_endpoint_with_client(client: TestClient, result):
+            expected_result = {"result": result} 
+            endpoint_tester(
+                method=endpoint['methods'][0],
+                endpoint=endpoint,
+                status_code=200,
+                expected_result=expected_result,
+                compare_result=True,
+                use_client=client,
+            )
 
+        monkeypatch.setattr(request_handlers, "STORE", api_db)
+        endpoint, _ = assert_endpoint_configuration(
+            endpoints,
+            methods=['GET'],
+            function=get_init_meta,
+            path='/meta/init',
+            execute=False
+        )
+        
+        app = initialise_fastapi_app(ENDPOINT_HANDLERS=[endpoint])
+        client = TestClient(app)
+        test_endpoint_with_client(client, {})
+
+        client.app.state.init = {}
+        test_endpoint_with_client(client, dict(client.app.state.init))
+        
+        client.app.state.init = {'succeeded': ['example'], 'failed': []}
+        test_endpoint_with_client(client, dict(client.app.state.init))
+
+        client.app.state.init = [213123231]
+        test_endpoint_with_client(client, list(client.app.state.init))
+        
+        
+        
+        
         
         

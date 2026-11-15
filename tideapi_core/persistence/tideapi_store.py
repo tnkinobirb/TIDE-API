@@ -1,13 +1,14 @@
 import sqlite3
 from pathlib import Path 
-from contextlib import contextmanager
 from threading import RLock
+from contextlib import contextmanager
 from tideapi.exceptions import (
     APIStoreLookupError,
     DataValidationError, 
     AlreadyRegisteredError,
     InvalidAPIStoreConfigurationError,
 )
+
 class TIDEAPIStore:
 
     ROOT = Path(__file__).parents[2]
@@ -181,6 +182,7 @@ class TIDEAPIStore:
                 (0, 'bundle_name', 'TEXT', 0, None, 1),
                 (1, 'bundle', 'TEXT', 1, None, 0)
             ]
+            
             cursor = cursor.execute("PRAGMA table_info(bundles)")
             cols = cursor.fetchall()
             assert len(cols) == len(expected_cols), "PRAGMA lrn mismatch"

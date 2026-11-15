@@ -1,32 +1,11 @@
-import uuid
+import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+from tide_tooling import TIDE
 from tideapi_core.exceptions import (
     APILookupError,
     DataValidationError,
 )
-from tideapi_core.persistence.tideapi_store import TIDEAPIStore
-
-
-# BUNDLES
-
-def list_bundles(TRACES: dict) -> list:
-    return list(trace["bundle_name"] for trace in TRACES.values())
-
-def is_bundle_registered(REGISTERED_BUNDLES: dict, bundle_name:str) -> bool:
-    return bundle_name in REGISTERED_BUNDLES
-
-def register_bundle_name(BUNDLES: dict, bundle_name: str) -> str:
-    if isinstance(bundle_name, str):
-        bundle_id = uuid.uuid4().hex
-        BUNDLES[bundle_id] = bundle_name
-    else:
-        raise DataValidationError('`bundle_name` must be a str identifier.')
-    return bundle_id
-
-def get_bundle_name(TRACES: dict, trace_id: str) -> str:
-    trace = get_trace(TRACES, trace_id)
-    return trace["bundle_name"]
 
 def validate_bundle_name(bundle_name: str) -> str:
     prohibited = ['/', '\\']    
@@ -36,17 +15,84 @@ def validate_bundle_name(bundle_name: str) -> str:
 
     return bundle_name
 
-# TRACES
+# Bundle validation
+def validate_tide_bundle(path: Path) -> str:
+    try:
+        raw = path.read_text(encoding="utf-8")
+        bundle = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise DataValidationError("Invalid TIDE bundle JSON") from exc
 
+    def require(condition: bool, message: str) -> None:
+        if not condition:
+            raise DataValidationError(message)
+
+    require(isinstance(bundle, dict), "Bundle must be a JSON object")
+    require(
+        set(bundle) == {"manifest", "cas"},
+        "Invalid bundle root structure"
+    )
+
+    manifest = bundle["manifest"]
+    require(isinstance(manifest, dict), "Manifest must be an object")
+    require(
+        set(manifest) == {
+            "kind", "codec_version", "content", "run",
+            "values", "events", "metadata"
+        },
+        "Invalid manifest structure"
+    )
+
+    require(manifest["kind"] == "tide_bundle", "Invalid bundle kind")
+    require(
+        type(manifest["codec_version"]) is int
+        and manifest["codec_version"] == 1,
+        "Unsupported bundle codec version"
+    )
+    require(manifest["content"] == "trace", "Invalid bundle content")
+
+    require(isinstance(manifest["values"], dict), "Invalid values")
+    require(isinstance(manifest["metadata"], dict), "Invalid metadata")
+    require(isinstance(bundle["cas"], dict), "Invalid CAS")
+
+    run = manifest["run"]
+    require(isinstance(run, dict), "Run must be an object")
+    require(
+        set(run) == {
+            "kind", "codec_version", "trace",
+            "records", "ready_attempts"
+        },
+        "Invalid run structure"
+    )
+
+    require(run["kind"] == "tide_run", "Invalid run kind")
+    require(
+        type(run["codec_version"]) is int
+        and run["codec_version"] == 1,
+        "Unsupported run codec version"
+    )
+    require(isinstance(run["trace"], dict), "Invalid trace")
+    require(isinstance(run["records"], list), "Invalid records")
+    require(isinstance(run["ready_attempts"], list), "Invalid ready attempts")
+
+    try:
+        TIDE.from_bundle(bundle)
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise DataValidationError("Invalid TIDE bundle format") from exc
+
+    
+    return raw
+
+# TRACES
 def list_traces(TRACES: dict) -> list:
     return list(TRACES)
 
-def get_trace(TRACES: dict, trace_id: str) -> dict:
-    if not isinstance(trace_id, str):
-        raise DataValidationError(f"Invalid trace_id type: {type(trace_id)}") 
-    trace = TRACES.get(trace_id)
+def get_trace(TRACES: dict, bundle_name: str) -> dict:
+    if not isinstance(bundle_name, str):
+        raise DataValidationError(f"Invalid bundle_name type: {type(bundle_name)}") 
+    trace = TRACES.get(bundle_name)
     if trace is None:
-        raise APILookupError(f"Unknown trace: {trace_id}")
+        raise APILookupError(f"Unknown trace: {bundle_name}")
     return trace
 
 

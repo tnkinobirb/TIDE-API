@@ -1,6 +1,6 @@
 from tideapi.exceptions import AlreadyRegisteredError 
 from tideapi_core.request_handlers import init_store
-from tideapi.handlers import register_bundle, register_trace
+from tideapi.handlers import persist_bundle, load_trace
 from tideapi.persistence import TIDEAPIStore
 from tideapi_core import request_handlers
 from threading import Thread, Barrier, Event
@@ -40,31 +40,23 @@ class ObservableLock:
 
 def locking_test_setups():
     
-    def register_trace_context():
-        _, store = TestFunctionLocks.helper_init_store()
-        tide_bundle = (request_handlers.BUNDLE_PATH/'example.json').read_text(encoding='utf-8')
-        
-        with store.apistore as conn:
-            conn.execute("INSERT INTO bundles (bundle_name, bundle) VALUES (?, ?)", ('example.json', tide_bundle))
-            table_snapshot = TestFunctionLocks.snapshot_bundles_table(conn)
-        TestFunctionLocks.assert_valid_filled_table_state(table_snapshot, tide_bundle)
-     
     
-    test_register_lock = (
-        register_trace_context,
-        register_trace,
+    load_trace_contention = pytest.param(
+        None,
+        load_trace,
         None,
         lambda result: result == {'result': list(request_handlers.TRACES.keys())[0]} and len(request_handlers.TRACES.keys()) == 1,
         "example.json",
         None,
-        False,
+        True,
         True,
         "register",
+        id="load_trace_contention",
     )
 
-    test_tideapistore_lock = (
+    tideapistore_contention = pytest.param(
         None,
-        register_bundle,
+        persist_bundle,
         AlreadyRegisteredError,
         lambda result: result == {"result": "example.json"},
         "example.json",
@@ -72,9 +64,10 @@ def locking_test_setups():
         True,
         True,
         "store",
+        id="tideapistore_contention",
     )
     
-    test_store_initialisation_lock = (
+    store_initialisation_contention = pytest.param(
         None,
         init_store,
         None,
@@ -83,13 +76,14 @@ def locking_test_setups():
         None,
         True,
         False,
-        "store_init"
+        "store_init",
+        id="store_initialisation_contention",
     )
     
     return [
-        test_register_lock,
-        test_tideapistore_lock,
-        test_store_initialisation_lock
+        load_trace_contention,
+        tideapistore_contention,
+        store_initialisation_contention
     ]
 
 class TestFunctionLocks:
@@ -104,9 +98,7 @@ class TestFunctionLocks:
     ) -> None:
         monkeypatch.setattr(request_handlers, "STORE", None)
         monkeypatch.setattr(request_handlers, "TRACES", {})
-        monkeypatch.setattr(request_handlers, "BUNDLES", {})
         monkeypatch.setattr(request_handlers, "BUNDLE_PATH", bundle_dir)
-        monkeypatch.setattr(request_handlers, "REGISTERED_BUNDLES", {})
         monkeypatch.setattr(request_handlers.TIDEAPIStore, "ROOT", tmp_path)
     
     def reset_state(
@@ -115,8 +107,6 @@ class TestFunctionLocks:
     ) -> None:
         monkeypatch.setattr(request_handlers, "STORE", None)
         monkeypatch.setattr(request_handlers, "TRACES", {})
-        monkeypatch.setattr(request_handlers, "BUNDLES", {})
-        monkeypatch.setattr(request_handlers, "REGISTERED_BUNDLES", {})
 
     # Helpers
     @staticmethod
@@ -124,8 +114,6 @@ class TestFunctionLocks:
                 
         rh = request_handlers
         assert rh.TRACES == {}
-        assert rh.BUNDLES == {}
-        assert rh.REGISTERED_BUNDLES == {}
         if assert_store:    
             assert rh.STORE is None
         else: assert isinstance(rh.STORE, TIDEAPIStore) 
@@ -181,7 +169,7 @@ class TestFunctionLocks:
         TestFunctionLocks.assert_valid_table_state(table_snapshot)
         rows = table_snapshot[2]
         TestFunctionLocks.assert_valid_rows(rows, tide_bundle=tide_bundle)
-
+        
     @staticmethod
     def assert_empty_store_state(table_snapshot: tuple[list, list, list]):
         TestFunctionLocks.assert_valid_table_state(table_snapshot)
@@ -329,7 +317,7 @@ class TestFunctionLocks:
             lock_attribute = "REGISTER_LOCK"
         elif lock_kind == 'store_init':
             lock_owner = request_handlers
-            lock_attribute = "STORE_LOCK"
+            lock_attribute = "STORE_INIT_LOCK"
         else:
             raise ValueError(f"Unknown lock kind: {lock_kind}")
 
@@ -401,7 +389,7 @@ class TestFunctionLocks:
             else:
                 self.assert_empty_store_state(snap)
     
-    def test_register_bundle_barrier(self, tide_bundle: str):
+    def test_persist_bundle_barrier(self, tide_bundle: str):
         self.assert_empty_state()
         barrier = Barrier(2, timeout=2)
 
@@ -410,7 +398,7 @@ class TestFunctionLocks:
         
         def worker():
             barrier.wait()
-            register_bundle('example.json')
+            persist_bundle('example.json')
 
         with ThreadPoolExecutor(max_workers=2) as threadpool:
             a = threadpool.submit(worker)
@@ -423,7 +411,7 @@ class TestFunctionLocks:
         with store.apistore as conn:
             self.assert_valid_filled_table_state(self.snapshot_bundles_table(conn), tide_bundle)
 
-    def test_register_bundle_contention(self, monkeypatch, tide_bundle: str):
+    def test_persist_bundle_contention(self, monkeypatch, tide_bundle: str):
             self.assert_empty_state()
             empty_snap, store = self.helper_init_store()
             self.assert_empty_store_state(empty_snap)
@@ -442,14 +430,14 @@ class TestFunctionLocks:
             monkeypatch.setattr(store, "lock", ObservableLock(store_lock, a_attempting, a_acquired, a_released, allow_a_to_continue))
 
             with ThreadPoolExecutor(max_workers=2) as threadpool:
-                a = threadpool.submit(register_bundle, "example.json")
+                a = threadpool.submit(persist_bundle, "example.json")
 
                 assert a_attempting.wait(timeout=5)
                 assert a_acquired.wait(timeout=5)
 
                 monkeypatch.setattr(store, "lock", ObservableLock(store_lock, b_attempting, b_acquired, b_released))
 
-                b = threadpool.submit(register_bundle, "example.json")
+                b = threadpool.submit(persist_bundle, "example.json")
 
                 assert b_attempting.wait(timeout=5)
 

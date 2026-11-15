@@ -1,9 +1,10 @@
-from tideapi.handlers import initialise_traces_on_docs_load
 from tideapi.helpers.fastapi import initialise_fastapi_app
+from tideapi_core import request_handlers
+from tideapi.exceptions import DataValidationError
+
+
 from fastapi.testclient import TestClient
 import pytest
-from types import SimpleNamespace 
-from tideapi_core import request_handlers
 
 class TestMiddleware:
     
@@ -11,26 +12,28 @@ class TestMiddleware:
     def setup_monkeypatch(
         self,
         monkeypatch,
-        api_db
     ):
         monkeypatch.setattr(request_handlers, "TRACES", {})
-        monkeypatch.setattr(request_handlers, "BUNDLES", {})
-        monkeypatch.setattr(request_handlers, "REGISTERED_BUNDLES", {})
 
-    def test_initialise_traces_on_docs_load(self, monkeypatch, tmp_path, api_db):
+    def test_initialise_traces(self, monkeypatch, api_db, tide_bundle):
         calls = []
-
+        
+        # Test docs_load calls `initialise_traces` 
         with monkeypatch.context() as m:
+            def wrapped(ignore_invalid=False):
+                calls.append("initialised")
+                return ['example.json'], []
+
             m.setattr(
                 request_handlers,
                 "initialise_traces_from_bundles",
-                lambda: calls.append("initialised") 
+                wrapped
             )
 
             app = initialise_fastapi_app(
                 MIDDLEWARE_HANDLERS=[{
                     "type": "http",
-                    "function": request_handlers.initialise_traces_on_docs_load
+                    "function": request_handlers.initialise_traces
                 }]
             )
         
@@ -42,28 +45,81 @@ class TestMiddleware:
             client.get("/docs")
             assert calls == ["initialised"]
 
+        # Test valid bundles
         with monkeypatch.context() as m:
-            m.setattr(request_handlers.TIDE, 'from_bundle', lambda self: {})
-            cursor = api_db.set('example.json', '1234')
+            monkeypatch.setattr(request_handlers, "STORE", api_db)
+            api_db.set('example.json', tide_bundle)
+            api_db.set('invalid.json', '1234')
+
             app = initialise_fastapi_app(
                 MIDDLEWARE_HANDLERS=[{
                     "type": "http",
-                    "function": request_handlers.initialise_traces_on_docs_load
+                    "function": request_handlers.initialise_traces
                 }]
             )   
 
-            BUNDLES = getattr(request_handlers, "BUNDLES")
             TRACES = getattr(request_handlers, "TRACES")
-            REGISTERED_BUNDLES = getattr(request_handlers, "REGISTERED_BUNDLES")
-            monkeypatch.setattr(request_handlers, "STORE", api_db)
 
-            assert all([len(ctx) == 0 for ctx in [TRACES, REGISTERED_BUNDLES]]) 
+            assert len(TRACES) == 0
 
             client = TestClient(app)
-            assert client.get("/docs").status_code == 200
+            assert not hasattr(client.app.state, "init")
+
+            response = client.get("/docs")
+            assert response.status_code == 200
             
-            assert all([isinstance(ctx, dict) for ctx in [BUNDLES, TRACES, REGISTERED_BUNDLES]])
-            assert len(BUNDLES) == 1
-            assert len(BUNDLES) == len(TRACES) == len(REGISTERED_BUNDLES)
+            init_meta = getattr(client.app.state, "init")
+            assert init_meta is not None
+            assert 'traces' in init_meta
+            assert len(init_meta['traces']) == 2
+            assert all([name in init_meta['traces'] for name in ['registered', 'failed']]) 
+            assert init_meta['traces']['registered'] == ['example.json'] 
+            assert init_meta['traces']['failed'] == ['invalid.json'] 
+
+            assert isinstance(TRACES, dict)
+            assert len(TRACES) == 1
 
 
+
+class TestMiddlewareHelpers:
+    
+    @pytest.fixture(autouse=True)
+    def setup_monkeypatch(
+        self,
+        monkeypatch,
+    ):
+        monkeypatch.setattr(request_handlers, "TRACES", {})
+
+    def test_initialise_traces_from_bundles(self, monkeypatch, endpoints, api_db, tide_bundle):
+        api_db.set('example.json', tide_bundle)
+        monkeypatch.setattr(request_handlers, "STORE", api_db)
+        
+        TRACES = getattr(request_handlers, "TRACES")
+        
+        assert len(TRACES) == 0
+        registered, failed = request_handlers.initialise_traces_from_bundles()
+        assert failed == []
+        assert registered == ['example.json']
+        
+        pre_state = dict(TRACES)
+        assert len(pre_state) == 1
+        
+        api_db.set('invalid.json', '1234')
+        with pytest.raises(DataValidationError):
+            request_handlers.initialise_traces_from_bundles()
+        fail_state = dict(TRACES)
+        assert pre_state == fail_state         
+
+        # Test failure state with ignore_invalid=True
+        registered, failed = request_handlers.initialise_traces_from_bundles(ignore_invalid=True)
+        assert failed == ['invalid.json']
+        assert registered == ['*example.json']
+        
+        assert len(TRACES) == 1
+        
+        post_state = dict(TRACES)
+        assert pre_state == post_state
+
+        
+
+        

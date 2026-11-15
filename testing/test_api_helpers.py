@@ -3,12 +3,9 @@ import fastapi
 import fastapi.testclient
 
 from tideapi.helpers.native import (
-    list_bundles,
+    list_traces,
     validate_bundle_name,
-    get_bundle_name,
     get_trace,
-    register_bundle_name,
-    is_bundle_registered,
 )
 
 from tideapi.helpers.fastapi import (
@@ -25,7 +22,7 @@ class TestNativeHelpers:
         result = validate_bundle_name(sample_bundle_name)
         assert result == sample_bundle_name
 
-    def test_unknown_trace_id(self, sample_traces_dict):
+    def test_unknown_bundle_name(self, sample_traces_dict):
         with pytest.raises(APILookupError):
             get_trace(sample_traces_dict, "non-existent-id")
 
@@ -43,38 +40,15 @@ class TestNativeHelpers:
         with pytest.raises(DataValidationError):
             validate_bundle_name(name)
 
-    def test_get_bundle_name(self, sample_traces_dict, sample_trace_uuid):        
-        name = get_bundle_name(sample_traces_dict, sample_trace_uuid)
-        assert name == 'example.json'
+    def test_list_traces(self, sample_traces_dict, sample_bundle_name):
+        bundle_names = list_traces(sample_traces_dict)
+        assert type(bundle_names) is list
+        assert len(bundle_names) == 1
+        assert bundle_names[0] == sample_bundle_name
 
-        with pytest.raises(APILookupError):
-            get_bundle_name(sample_traces_dict, "unknown")
-
-        with pytest.raises(DataValidationError):
-            get_bundle_name(sample_traces_dict, 1)
-
-    def test_register_bundle_name(self, empty_dict, sample_bundle_name):
-        bundle_id = register_bundle_name(empty_dict, sample_bundle_name)
-        assert len(empty_dict) == 1
-        assert empty_dict.get(bundle_id) == sample_bundle_name
-        assert type(bundle_id) is str
-        assert len(bundle_id) == 32
-
-    def test_list_bundles(self, sample_traces_dict, sample_bundle_name):
-        bundles = list_bundles(sample_traces_dict)
-        assert type(bundles) is list
-        assert len(bundles) == 1
-        assert bundles[0] == sample_bundle_name
-
-    def test_get_trace(self, sample_traces_dict, sample_trace_uuid, sample_bundle_uuid, sample_bundle_name):
-        trace = get_trace(sample_traces_dict, sample_trace_uuid)
-        expected_trace_keys = ["trace", "bundle_id", "bundle_name"] 
-        assert type(trace) is dict
-        assert len(trace) == 3
-        assert all([name in list(trace.keys()) for name in expected_trace_keys])
-        assert trace is sample_traces_dict[sample_trace_uuid]
-        assert trace["bundle_id"] == sample_bundle_uuid
-        assert trace["bundle_name"] == sample_bundle_name
+    def test_get_trace(self, sample_traces_dict, sample_bundle_name):
+        trace = get_trace(sample_traces_dict, sample_bundle_name)
+        assert trace is sample_traces_dict[sample_bundle_name]
 
         with pytest.raises(APILookupError):
             get_trace(sample_traces_dict, "unknown")
@@ -82,21 +56,6 @@ class TestNativeHelpers:
         with pytest.raises(DataValidationError):
             get_trace(sample_traces_dict, 1)
             
-
-    @pytest.mark.parametrize(
-        ["name", "should_exist"],
-        [
-            (None, True),
-            ("nonexistent.json", False),
-        ]
-    )
-    def test_is_bundle_registered(self, sample_registered_bundles_dict, sample_bundle_name, name, should_exist):    
-        if name is None and should_exist:
-            name = sample_bundle_name
-        registered = is_bundle_registered(sample_registered_bundles_dict, name)
-        assert type(registered) is bool
-        assert registered is should_exist
-
 
 class TestFastAPIHelpers:
     def test_endpoint_registration(self, sample_endpoints):

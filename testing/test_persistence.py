@@ -249,7 +249,7 @@ def test_store_exists(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     
     conn.close()
 
-def test_list_bundles(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: TempPathFactory):
+def test_bundles_listing(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: TempPathFactory):
     bundle_path = tmp_path_factory.mktemp('bundles')
     conn, apistore = init_test_apistore(monkeypatch, bundle_path)
    

@@ -16,7 +16,7 @@ exceptions = {
         (APILookupError, 404), 
         (TraceLookupError, 404),
         (APIStoreLookupError, 404),
-        (DataValidationError, 418),
+        (DataValidationError, 400),
         (AlreadyRegisteredError, 409),
         (InternalExceptionError, 500),
     ]
