@@ -34,7 +34,7 @@ def raise_error(exc: str) -> None:
 
 # HELPERS
 def exc_endpoint() -> dict:
-    return {'path':'/exc', 'function': raise_error, 'methods':['POST']}
+    return {'path':'/exc', 'endpoint': raise_error, 'methods':['POST']}
 
 def init_exc_endpoint(exc: Exception) -> TestClient:
     if exc not in EXCEPTION_HANDLERS:

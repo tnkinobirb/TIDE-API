@@ -2,24 +2,24 @@ from fastapi import FastAPI
 from tideapi.exceptions import AlreadyRegisteredError
 
 def register_middleware_handlers(app: FastAPI, MIDDLEWARE_HANDLERS: dict) -> None:
-    for handler in MIDDLEWARE_HANDLERS:
-        app.middleware(handler['type'])(handler['function'])
+    for middleware in MIDDLEWARE_HANDLERS:
+        app.middleware(middleware['middleware_type'])(middleware['func'])
     
 def register_endpoint_handlers(app: FastAPI, ENDPOINT_HANDLERS: list[dict]) -> None:
     seen = {}
-    for handler in ENDPOINT_HANDLERS:
+    for endpoint in ENDPOINT_HANDLERS:
         if next(iter(
-            route for route in list(app.routes) if route.path == handler['path']
-        ), None) or handler['path'] in seen:
-            raise AlreadyRegisteredError(f"Route for {handler['path']} already exists!")
+            route for route in list(app.routes) if route.path == endpoint['path']
+        ), None) or endpoint['path'] in seen:
+            raise AlreadyRegisteredError(f"Route for {endpoint['path']} already exists!")
 
-        seen[handler['path']] = handler
+        seen[endpoint['path']] = endpoint
         
-    for handler in list(seen.values()):
+    for endpoint in list(seen.values()):
         app.add_api_route(
-            path=handler['path'], 
-            methods=handler['methods'],
-            endpoint=handler['function'], 
+            path=endpoint['path'], 
+            methods=endpoint['methods'],
+            endpoint=endpoint['endpoint'], 
         )
 
 def initialise_fastapi_app(

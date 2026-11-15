@@ -2,7 +2,8 @@ import sqlite3
 from pathlib import Path 
 from threading import RLock
 from contextlib import contextmanager
-from tideapi.exceptions import (
+from tideapi_core.config import DB_PATH as DEFAULT_DB_PATH
+from tideapi_core.exceptions import (
     APIStoreLookupError,
     DataValidationError, 
     AlreadyRegisteredError,
@@ -11,16 +12,14 @@ from tideapi.exceptions import (
 
 class TIDEAPIStore:
 
-    ROOT = Path(__file__).parents[2]
-    VERBOSE=True
-
-    def __init__(self):
-        self.BUNDLE_PATH = self.ROOT / 'bundles.db'
+    DB_PATH = DEFAULT_DB_PATH
+    def __init__(self, db_path: Path | None = None):
+        self.DB_PATH = self.__class__.DB_PATH if db_path is None else db_path
         self.create_bundle_store()
         self.lock = RLock()
 
     def connect_to_bundle_db(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.BUNDLE_PATH)
+        conn = sqlite3.connect(self.DB_PATH)
         return conn
 
     @staticmethod
@@ -44,15 +43,13 @@ class TIDEAPIStore:
             conn.close()
 
     def create_bundle_store(self):
-        if self.BUNDLE_PATH.exists():
-            if self.BUNDLE_PATH.is_file():
+        if self.DB_PATH.exists():
+            if self.DB_PATH.is_file():
                 with self.apistore as conn:
                     self._assert_expected_api_store_config(conn)
-                    if self.VERBOSE:
-                        print("`bundles.db` exists and is valid. Using connection.")
             else:
                 raise InvalidAPIStoreConfigurationError(
-                    f"BUNDLE_PATH {self.BUNDLE_PATH} exists but is not a file!"
+                    f"DB_PATH {self.DB_PATH} exists but is not a file!"
                 )
         else:
             with self.apistore as conn:
@@ -67,8 +64,6 @@ class TIDEAPIStore:
                         f"e = {type(e).__name__} {str(e)}. \n" 
                     )
 
-                if self.VERBOSE:
-                    print("`bundles.db` initialised and configured.")    
 
     def set(self, bundle_name: str, bundle: str, replace:bool=False) -> None:
         if not isinstance(replace, bool):
@@ -161,7 +156,7 @@ class TIDEAPIStore:
     def _assert_expected_api_store_config(self, conn: sqlite3.Connection) -> None:
         cols = []
         try:
-            assert self.BUNDLE_PATH.name.lower() == 'bundles.db'
+            assert self.DB_PATH.name.lower() == 'bundles.db'
             cursor = self.get_cursor(conn)
             tables = list(cursor.execute(
                 "SELECT name FROM sqlite_schema " \
@@ -188,22 +183,9 @@ class TIDEAPIStore:
             assert len(cols) == len(expected_cols), "PRAGMA lrn mismatch"
             assert all([cols[idx] == expected_cols[idx] for idx, _ in enumerate(cols)]), f"PRAGMA col mismatch: {cols}"
         except Exception as e:
-            if self.VERBOSE:
-                print("bundles.db` exists but its configuration is invalid") 
             raise InvalidAPIStoreConfigurationError(
                 "`bundles.db` exists but its configuration is invalid. \n" \
                 "Expects a store with a `bundles` table containing `bundle_name` and `bundle` cols ONLY! \n" \
                 "This error is used to avoid accidental data corruption \n" \
                 f"e = {type(e).__name__} {str(e)}{f'. \n cols = {cols}.' if cols else '.'}" \
             )
-
-if __name__ == "__main__":
-    CORRUPT = False
-    try:
-        if CORRUPT:
-            cur = sqlite3.connect(TIDEAPIStore.BUNDLE_PATH).cursor()
-            cur.execute("ALTER TABLE bundles ADD extra TEXT")
-    except:
-        pass
-
-    TIDEAPIStore()

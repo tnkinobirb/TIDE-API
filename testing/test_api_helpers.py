@@ -69,7 +69,7 @@ class TestFastAPIHelpers:
         for idx, route in enumerate(registered_endpoints[-len(sample_endpoints):]):
             assert route.path == sample_endpoints[idx]['path']
             assert route.methods == set(sample_endpoints[idx]['methods'])
-            assert route.endpoint is sample_endpoints[idx]['function']
+            assert route.endpoint is sample_endpoints[idx]['endpoint']
             response = client.get(route.path)
             assert response.status_code == 200
             assert response.json() == {'result':'example'}
@@ -141,7 +141,7 @@ class TestFastAPIHelpers:
     def test_post_on_get_returns_405(self):
         endpoint_handler = {   
             'path':'/',
-            'function': lambda: {'result': 'example'},
+            'endpoint': lambda: {'result': 'example'},
             'methods':['GET']
         }
         app = initialise_fastapi_app(ENDPOINT_HANDLERS=[endpoint_handler, ])
@@ -152,7 +152,7 @@ class TestFastAPIHelpers:
     def test_fastapi_double_registration_raises(self):
         endpoint_handler = {   
             'path':'/',
-            'function': lambda: {'result': 'example'},
+            'endpoint': lambda: {'result': 'example'},
             'methods': ['GET']
         }
         app = initialise_fastapi_app(ENDPOINT_HANDLERS=[endpoint_handler])
@@ -175,7 +175,7 @@ class TestFastAPIHelpers:
     def test_endpoint_registration_atomicity_on_tide_api_failure(self):
         endpoint_handler = {   
             'path':'/',
-            'function': lambda: {'result': 'example'},
+            'endpoint': lambda: {'result': 'example'},
             'methods': ['GET']
         }
         app = initialise_fastapi_app()

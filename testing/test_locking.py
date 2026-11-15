@@ -3,12 +3,11 @@ from tideapi_core.request_handlers import init_store
 from tideapi.handlers import persist_bundle, load_trace
 from tideapi.persistence import TIDEAPIStore
 from tideapi_core import request_handlers
-from threading import Thread, Barrier, Event
+from threading import Barrier, Event
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path 
 import sqlite3
 import pytest
-import json
 from typing import Callable, Any
 from threading import Lock, RLock 
 
@@ -98,8 +97,8 @@ class TestFunctionLocks:
     ) -> None:
         monkeypatch.setattr(request_handlers, "STORE", None)
         monkeypatch.setattr(request_handlers, "TRACES", {})
-        monkeypatch.setattr(request_handlers, "BUNDLE_PATH", bundle_dir)
-        monkeypatch.setattr(request_handlers.TIDEAPIStore, "ROOT", tmp_path)
+        monkeypatch.setattr(request_handlers, "BUNDLE_DIR", bundle_dir)
+        monkeypatch.setattr(request_handlers.TIDEAPIStore, "DB_PATH", tmp_path / "bundles.db")
     
     def reset_state(
         self,
@@ -211,9 +210,7 @@ class TestFunctionLocks:
         assert store_a is store_b
         assert request_handlers.STORE is store_a
 
-        stores = list(
-            request_handlers.TIDEAPIStore.ROOT.iterdir()
-        )
+        stores = list(request_handlers.TIDEAPIStore.DB_PATH.parent.iterdir())
 
         assert len(stores) == 1
         assert stores[0].name == "bundles.db"
@@ -289,9 +286,7 @@ class TestFunctionLocks:
         
         if lock_kind == 'store_init':
             assert request_handlers.STORE is None
-            assert not list(
-                request_handlers.TIDEAPIStore.ROOT.iterdir()
-            )
+            assert not request_handlers.TIDEAPIStore.DB_PATH.exists()
             snap = None
             store = None 
         else:

@@ -1,15 +1,14 @@
+import pytest
+import sqlite3
+from pathlib import Path
+from pytest import TempPathFactory
 from tideapi.persistence import TIDEAPIStore
 from tideapi.exceptions import AlreadyRegisteredError, InvalidAPIStoreConfigurationError, DataValidationError, APIStoreLookupError
-from pathlib import Path
-import sqlite3
-import pytest
-from pytest import TempPathFactory
 
 def init_test_apistore(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    monkeypatch.setattr(TIDEAPIStore, 'ROOT', tmp_path)
-    monkeypatch.setattr(TIDEAPIStore, 'VERBOSE', False)
+    monkeypatch.setattr(TIDEAPIStore, 'DB_PATH', tmp_path / 'bundles.db')
     apistore = TIDEAPIStore()
-    conn = sqlite3.connect(tmp_path / 'bundles.db')
+    conn = sqlite3.connect(TIDEAPIStore.DB_PATH)
     return conn, apistore
 
 def sanitise_name(string:str) -> str:

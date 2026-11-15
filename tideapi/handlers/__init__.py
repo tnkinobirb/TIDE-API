@@ -1,9 +1,9 @@
 from tideapi_core.request_handlers import (
     init_store,
-    show_trace,
-    inspect_ref,
-    inspect_exec,
-    inspect_actor,
+    trace_to_dict,
+    investigate_ref,
+    investigate_exec,
+    investigate_actor,
     get_init_meta,
     load_trace,
     persist_bundle,
@@ -15,7 +15,7 @@ from tideapi_core.request_handlers import (
     initialise_traces,
     ENDPOINT_HANDLERS,
     MIDDLEWARE_HANDLERS,
-    TIDE_INSPECT_ENDPOINTS,
+    TIDE_TRACE_ENDPOINTS,
 )
 
 from tideapi_core.exception_handlers import (

@@ -32,8 +32,8 @@ class TestMiddleware:
 
             app = initialise_fastapi_app(
                 MIDDLEWARE_HANDLERS=[{
-                    "type": "http",
-                    "function": request_handlers.initialise_traces
+                    "middleware_type": "http",
+                    "func": request_handlers.initialise_traces
                 }]
             )
         
@@ -53,8 +53,8 @@ class TestMiddleware:
 
             app = initialise_fastapi_app(
                 MIDDLEWARE_HANDLERS=[{
-                    "type": "http",
-                    "function": request_handlers.initialise_traces
+                    "middleware_type": "http",
+                    "func": request_handlers.initialise_traces
                 }]
             )   
 

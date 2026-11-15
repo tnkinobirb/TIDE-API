@@ -1,4 +1,4 @@
-import pytest, uuid
+import pytest
 from tideapi.persistence import TIDEAPIStore
 from tideapi.handlers import ENDPOINT_HANDLERS 
 from fastapi import Request
@@ -53,7 +53,7 @@ def bundle_dir(tmp_path_factory):
 
 @pytest.fixture
 def api_db(monkeypatch, tmp_path: Path) -> sqlite3.Connection:
-    monkeypatch.setattr(TIDEAPIStore, 'ROOT', tmp_path)
+    monkeypatch.setattr(TIDEAPIStore, 'DB_PATH', tmp_path / 'bundles.db')
     return TIDEAPIStore()
 
 @pytest.fixture
@@ -69,12 +69,12 @@ def sample_endpoints():
     return [
        {
         'path':'/example',
-        'function':lambda:{'result': 'example'},
+        'endpoint':lambda:{'result': 'example'},
         'methods':{'GET', }
        },
        {
         'path':'/hello',
-        'function':lambda: {'result': 'example'},
+        'endpoint':lambda: {'result': 'example'},
         'methods':{'GET', }
        }
     ]
@@ -94,12 +94,12 @@ async def sample_middleware_func_1(request, call_next):
 def sample_middleware():
     return [
         {
-        'type': 'http',
-        'function': sample_middleware_func_0
+        'middleware_type': 'http',
+        'func': sample_middleware_func_0
         },
         {
-        'type': 'http',
-        'function': sample_middleware_func_1
+        'middleware_type': 'http',
+        'func': sample_middleware_func_1
         },
     ]
 
@@ -128,7 +128,7 @@ def sample_exception_handlers():
 
 @pytest.fixture
 def endpoints() -> dict:
-    return {endpoint['function'].__name__: endpoint for endpoint in ENDPOINT_HANDLERS}
+    return {endpoint['endpoint'].__name__: endpoint for endpoint in ENDPOINT_HANDLERS}
 
 def trace():
     tide = TIDE()

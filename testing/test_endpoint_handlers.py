@@ -16,10 +16,10 @@ from tideapi.persistence import TIDEAPIStore
 from tideapi.helpers.fastapi import initialise_fastapi_app
 from tideapi.handlers import (
     init_store,
-    show_trace,
-    inspect_ref,
-    inspect_exec,
-    inspect_actor,
+    trace_to_dict,
+    investigate_ref,
+    investigate_exec,
+    investigate_actor,
     get_init_meta,
     load_trace,
     persist_bundle,
@@ -27,12 +27,11 @@ from tideapi.handlers import (
     local_bundles,
     loaded_traces,
     persisted_bundles,
-    TIDE_INSPECT_ENDPOINTS
+    TIDE_TRACE_ENDPOINTS
 )
 from tideapi.exceptions import (
     APILookupError, 
     TraceLookupError, 
-    APIStoreLookupError,
     DataValidationError, 
     AlreadyRegisteredError, 
 )
@@ -42,7 +41,7 @@ UNKNOWN_INT = 99999*9999*999*99*9
 
 def assert_endpoint(endpoint:dict[str, Any], path:str, methods:list[str]|set[str], function:Callable[..., Any]) -> None:
     assert endpoint['methods'] == methods
-    assert endpoint['function'] is function
+    assert endpoint['endpoint'] is function
     assert endpoint['path'] == path
 
 def assert_is_tide_api_response(json:dict[str, Any]) -> None:
@@ -91,16 +90,16 @@ class TestTIDEEndpoints:
         monkeypatch.setattr(request_handlers, "TRACES", {sample_bundle_name: sample_trace})
 
     def test_trace_show_is_serialisable(self, sample_bundle_name: str) -> None:
-        json.dumps(show_trace(sample_bundle_name))
+        json.dumps(trace_to_dict(sample_bundle_name))
 
-    def test_trace_inspect_ref_is_serialisable(self, sample_bundle_name: str, sample_ref: str) -> None:
-        json.dumps(inspect_ref(sample_bundle_name, sample_ref))
+    def test_trace_investigate_ref_is_serialisable(self, sample_bundle_name: str, sample_ref: str) -> None:
+        json.dumps(investigate_ref(sample_bundle_name, sample_ref))
 
-    def test_show_trace(self, endpoints: dict[str, dict[str, Any]], sample_bundle_name: str) -> None:
+    def test_trace_to_dict(self, endpoints: dict[str, dict[str, Any]], sample_bundle_name: str) -> None:
         endpoint, expected_result = assert_endpoint_configuration(
             endpoints,
             methods=['GET'],
-            function=show_trace,
+            function=trace_to_dict,
             bundle_name=sample_bundle_name,
             path='/traces/{bundle_name}',
         )
@@ -114,14 +113,14 @@ class TestTIDEEndpoints:
         )
 
         with pytest.raises(APILookupError):
-            show_trace(UNKNOWN_STR) 
+            trace_to_dict(UNKNOWN_STR) 
     
-    def test_inspect_ref(self, endpoints: dict[str, dict[str, Any]], sample_bundle_name: str, sample_ref: str) -> None:
+    def test_investigate_ref(self, endpoints: dict[str, dict[str, Any]], sample_bundle_name: str, sample_ref: str) -> None:
         endpoint, expected_result = assert_endpoint_configuration(
             endpoints,
             ref=sample_ref,
             methods=['GET'],
-            function=inspect_ref,
+            function=investigate_ref,
             bundle_name=sample_bundle_name,
             path='/traces/{bundle_name}/ref',
         )
@@ -136,16 +135,16 @@ class TestTIDEEndpoints:
         )
 
         with pytest.raises(TraceLookupError):
-            inspect_ref(bundle_name=sample_bundle_name, ref=UNKNOWN_STR)
+            investigate_ref(bundle_name=sample_bundle_name, ref=UNKNOWN_STR)
 
-    def test_inspect_exec(self, endpoints: dict[str, dict[str, Any]], sample_bundle_name: str, sample_exec: int) -> None:
+    def test_investigate_exec(self, endpoints: dict[str, dict[str, Any]], sample_bundle_name: str, sample_exec: int) -> None:
         endpoint, expected_result = assert_endpoint_configuration(
             endpoints,
             methods=['GET'],
-            function=inspect_exec,
+            function=investigate_exec,
             path='/traces/{bundle_name}/exec',
             bundle_name=sample_bundle_name,
-            ref=sample_exec
+            exec_seq_id=sample_exec
         )
 
         endpoint_tester(
@@ -154,18 +153,18 @@ class TestTIDEEndpoints:
             status_code=200, 
             expected_result=expected_result, 
             replace=[('bundle_name', sample_bundle_name)], 
-            params={'ref':sample_exec}
+            params={'exec_seq_id':sample_exec}
         )
 
         with pytest.raises(TraceLookupError):
-            inspect_exec(sample_bundle_name, ref=UNKNOWN_INT)
+            investigate_exec(sample_bundle_name, exec_seq_id=UNKNOWN_INT)
 
-    def test_inspect_actor(self, endpoints: dict[str, dict[str, Any]], sample_bundle_name: str, sample_actor: str) -> None:
+    def test_investigate_actor(self, endpoints: dict[str, dict[str, Any]], sample_bundle_name: str, sample_actor: str) -> None:
         endpoint, expected_result = assert_endpoint_configuration(
             endpoints,
-            ref=sample_actor,
+            actor=sample_actor,
             methods=['GET'],
-            function=inspect_actor,
+            function=investigate_actor,
             bundle_name=sample_bundle_name,
             path='/traces/{bundle_name}/actor',
         )
@@ -176,11 +175,11 @@ class TestTIDEEndpoints:
             status_code=200,
             expected_result=expected_result,
             replace=[('bundle_name', sample_bundle_name)],
-            params={'ref': sample_actor},
+            params={'actor': sample_actor},
         )
 
         with pytest.raises(TraceLookupError):
-            inspect_actor(bundle_name=sample_bundle_name, ref=UNKNOWN_STR)
+            investigate_actor(bundle_name=sample_bundle_name, actor=UNKNOWN_STR)
 
         
 class TestStoreHelpers:
@@ -197,16 +196,16 @@ class TestStoreHelpers:
     ) -> None:
         monkeypatch.setattr(request_handlers, "STORE", None)
         monkeypatch.setattr(request_handlers, "TRACES", {sample_bundle_name: sample_trace})
-        monkeypatch.setattr(request_handlers, "BUNDLE_PATH", bundle_dir)
-        monkeypatch.setattr(request_handlers.TIDEAPIStore, "ROOT", tmp_path)
+        monkeypatch.setattr(request_handlers, "BUNDLE_DIR", bundle_dir)
+        monkeypatch.setattr(request_handlers.TIDEAPIStore, "DB_PATH", tmp_path / "bundles.db")
 
     def test_apistore_init(self, tide_bundle):
         assert getattr(request_handlers, "STORE") is None
-        apistore_root = getattr(request_handlers.TIDEAPIStore, "ROOT")
-        assert not list(apistore_root.iterdir())
+        apistore_path = getattr(request_handlers.TIDEAPIStore, "DB_PATH")
+        assert not apistore_path.exists()
         
         STORE = init_store()
-        stores = list(apistore_root.iterdir())
+        stores = list(apistore_path.parent.iterdir())
         assert len(stores) == 1
         assert stores[0].name == "bundles.db"
         
@@ -223,7 +222,7 @@ class TestStoreHelpers:
 
     def test_persist_bundle(self, monkeypatch:pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory, endpoints: dict[str, dict[str, Any]], bundle_dir, tide_bundle):
         def assert_rows():
-            with sqlite3.connect(request_handlers.TIDEAPIStore.ROOT / "bundles.db") as conn:
+            with sqlite3.connect(request_handlers.TIDEAPIStore.DB_PATH) as conn:
                 rows = conn.execute("SELECT * FROM bundles").fetchall()
             assert len(rows) == 1
             assert rows == [('example.json', tide_bundle)]
@@ -231,8 +230,8 @@ class TestStoreHelpers:
         with monkeypatch.context() as m:
             m.setattr(request_handlers, "STORE", None)
             m.setattr(request_handlers, "TRACES", {})
-            m.setattr(request_handlers, "BUNDLE_PATH", bundle_dir)
-            m.setattr(request_handlers.TIDEAPIStore, "ROOT", tmp_path_factory.mktemp("123")) 
+            m.setattr(request_handlers, "BUNDLE_DIR", bundle_dir)
+            m.setattr(request_handlers.TIDEAPIStore, "DB_PATH", tmp_path_factory.mktemp("123") / "bundles.db") 
             assert request_handlers.STORE is None
             endpoint, expected_result = assert_endpoint_configuration(
                 endpoints,
@@ -244,9 +243,8 @@ class TestStoreHelpers:
 
 
         assert getattr(request_handlers, "STORE") is None
-        apistore_root = getattr(request_handlers.TIDEAPIStore, "ROOT")
-        print(list(apistore_root.iterdir()))
-        assert not list(apistore_root.iterdir())
+        apistore_path = getattr(request_handlers.TIDEAPIStore, "DB_PATH")
+        assert not apistore_path.exists()
 
         endpoint_tester(
             status_code=200, 
@@ -284,9 +282,8 @@ class TestStoreHelpers:
             params={'replace': False}
         )
 
-        stores = list(apistore_root.iterdir())
-        assert len(stores) == 1
-        assert stores[0].name == "bundles.db"
+        assert apistore_path.is_file()
+        assert apistore_path.name == "bundles.db"
 
         assert_rows()
 
@@ -332,7 +329,7 @@ class TestAPIHelperEndpoints:
 
     def test_local_bundles(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch, bundle_dir: Path) -> None:
         with monkeypatch.context() as m:
-            m.setattr(request_handlers, "BUNDLE_PATH", bundle_dir)
+            m.setattr(request_handlers, "BUNDLE_DIR", bundle_dir)
             (bundle_dir / "invalid.txt").write_text("invalid", encoding="utf-8")
 
             endpoint, expected_result = assert_endpoint_configuration(
@@ -386,7 +383,7 @@ class TestAPIHelperEndpoints:
         with monkeypatch.context() as m:
             m.setattr(request_handlers, "STORE", None)
             test_path = tmp_path_factory.mktemp('test')
-            m.setattr(request_handlers.TIDEAPIStore, "ROOT", test_path)
+            m.setattr(request_handlers.TIDEAPIStore, "DB_PATH", test_path / "bundles.db")
 
             store = init_store()
 
@@ -416,44 +413,44 @@ class TestAPIHelperEndpoints:
             m.setattr(request_handlers, "STORE", None)
             empty_path = tmp_path_factory.mktemp('empty')
             assert not any(empty_path.iterdir())
-            m.setattr(TIDEAPIStore, "ROOT", empty_path)
+            m.setattr(TIDEAPIStore, "DB_PATH", empty_path / "bundles.db")
             init_store()
             response = client.get("/bundles")
 
             assert response.status_code == 200
             assert response.json() == {"result": []}
 
-    @pytest.mark.parametrize("endpoint", TIDE_INSPECT_ENDPOINTS)
-    def test_inspect_endpoints_raises_api_error_on_unknown_trace(self, endpoint: dict[str, Any]) -> None:
-        import inspect 
+    @pytest.mark.parametrize("endpoint", TIDE_TRACE_ENDPOINTS)
+    def test_investigate_endpoints_raises_api_error_on_unknown_trace(self, endpoint: dict[str, Any]) -> None:
         
-        function = endpoint['function']
+        function = endpoint['endpoint']
         parameters = inspect.signature(function).parameters
 
         assert len(parameters) >= 1
         assert "bundle_name" in parameters
     
+        replace_params = {"bundle_name": UNKNOWN_STR}
         for name, parameter in parameters.items():
             if repr(parameter.annotation) == "<class 'str'>":
                 if name == "bundle_name":
                     continue
-                ref = UNKNOWN_STR   
+                replace_params[name] = UNKNOWN_STR   
             elif repr(parameter.annotation) == "<class 'int'>":
-                ref = UNKNOWN_INT   
+                replace_params[name] = UNKNOWN_INT   
             else:
-                raise RuntimeError("Invalid input signature type for inspection endpoint")
+                raise RuntimeError("Invalid input signature type for investigation endpoint")
         
         with pytest.raises(APILookupError):
             if len(parameters) == 1:
                 function(bundle_name=UNKNOWN_STR)
             else:
-                function(bundle_name=UNKNOWN_STR, ref=ref)
+                function(**replace_params)
 
-    @pytest.mark.parametrize("endpoint", [endpoint for endpoint in TIDE_INSPECT_ENDPOINTS if len(inspect.signature(endpoint['function']).parameters) > 1])
-    def test_inspect_endpoints_raises_trace_lookup_error_on_unknown_ref(self, sample_bundle_name: str, endpoint: dict[str, Any]) -> None:
+    @pytest.mark.parametrize("endpoint", [endpoint for endpoint in TIDE_TRACE_ENDPOINTS if len(inspect.signature(endpoint['endpoint']).parameters) > 1])
+    def test_investigate_endpoints_raises_trace_lookup_error_on_unknown_ref(self, sample_bundle_name: str, endpoint: dict[str, Any]) -> None:
         
         
-        function = endpoint['function']
+        function = endpoint['endpoint']
         parameters = inspect.signature(function).parameters
         replace_params = dict()
 
@@ -466,7 +463,7 @@ class TestAPIHelperEndpoints:
             elif repr(parameter.annotation) == "<class 'int'>":
                 replace_params[f'{parameter.name}'] = UNKNOWN_INT   
             else:
-                raise RuntimeError("Invalid input signature type for inspection endpoint")
+                raise RuntimeError("Invalid input signature type for investigation endpoint")
         
     
         with pytest.raises(TraceLookupError):
@@ -485,9 +482,9 @@ class TestAPIHelperEndpoints:
 
     def test_load_trace(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory, tide_bundle:str, bundle_dir:Path) -> None:
 
-        def init_context(m: pytest.MonkeyPatch, root):
+        def init_context(m: pytest.MonkeyPatch, db_path):
             m.setattr(request_handlers, "TRACES", {})
-            m.setattr(request_handlers.TIDEAPIStore, "ROOT", root)
+            m.setattr(request_handlers.TIDEAPIStore, "DB_PATH", db_path)
             m.setattr(request_handlers, "STORE", None)
 
             return init_store()
@@ -510,13 +507,13 @@ class TestAPIHelperEndpoints:
         
         with monkeypatch.context() as m:
             test_dir = tmp_path_factory.mktemp("test")
-            store = init_context(m, test_dir)
+            store = init_context(m, test_dir / "bundles.db")
 
             assert_empty_context()
 
             # Test malformed trace
             bundles = tmp_path_factory.mktemp("bundles")
-            m.setattr(request_handlers, 'BUNDLE_PATH', bundles)
+            m.setattr(request_handlers, 'BUNDLE_DIR', bundles)
 
             malformed = json.loads(tide_bundle)
             malformed["manifest"]["run"]["trace"] = {}
@@ -551,7 +548,7 @@ class TestAPIHelperEndpoints:
             assert_empty_context()
         
         with monkeypatch.context() as m:
-            store = init_context(m, tmp_path_factory.mktemp("temp"))
+            store = init_context(m, tmp_path_factory.mktemp("temp") / "bundles.db")
             store.set("example.json", tide_bundle)
             assert len(store.bundles()) == 1
         
@@ -572,7 +569,7 @@ class TestAPIHelperEndpoints:
             assert result == expected_result
 
         with monkeypatch.context() as m:
-            store = init_context(m, tmp_path_factory.mktemp("store"))
+            store = init_context(m, tmp_path_factory.mktemp("store") / "bundles.db")
             store.set("example.json", tide_bundle)
             assert len(store.bundles()) == 1
 
@@ -595,8 +592,8 @@ class TestAPIHelperEndpoints:
             assert_context()
 
         with monkeypatch.context() as m:
-            m.setattr(request_handlers, 'BUNDLE_PATH', bundle_dir)
-            store = init_context(m, tmp_path_factory.mktemp("auto-reg"))
+            m.setattr(request_handlers, 'BUNDLE_DIR', bundle_dir)
+            store = init_context(m, tmp_path_factory.mktemp("auto-reg") / "bundles.db")
             assert len(store.bundles()) == 0
 
             assert list(file.name for file in bundle_dir.iterdir()) == ['example.json']

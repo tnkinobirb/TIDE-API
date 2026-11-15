@@ -1,4 +1,3 @@
-import uuid
 import json
 from pathlib import Path
 
@@ -7,10 +6,10 @@ from fastapi.responses import RedirectResponse
 from fastapi.concurrency import run_in_threadpool
 
 from tide_tooling import TIDE
+from tideapi_core.config import BUNDLE_DIR
 from tideapi_core.helpers.native import validate_tide_bundle
 from tideapi_core.persistence.tideapi_store import TIDEAPIStore
 from tideapi_core.locks import (
-    BUNDLE_PATH,
     REGISTER_LOCK,
     STORE_INIT_LOCK,
 )
@@ -26,10 +25,10 @@ from tideapi_core.helpers.native import (
 from tideapi_core.exceptions import (
     APILookupError,
     TraceLookupError,
-    APIStoreLookupError,
     DataValidationError, 
 )
 
+# STORE INITIALISER
 def init_store() -> TIDEAPIStore:
     '''
     Initialise and retrieve the global TIDEAPIStore instance.
@@ -42,18 +41,17 @@ def init_store() -> TIDEAPIStore:
             STORE = TIDEAPIStore()
     return STORE
 
-# Redirects
+# REDIRECTS
 def redirect_to_docs() -> RedirectResponse:
     '''Used to redirect to /docs'''
     return RedirectResponse(url='/docs', status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 # REGISTER
-
 def persist_bundle(bundle_name:str, replace:bool=False) -> dict[str, str]:
     '''Persist a bundle from the `TIDE-API/bundles` dir into TIDEAPIStore's sqlite3 `bundles.db`'''
     validate_bundle_name(bundle_name)
-    path = BUNDLE_PATH / Path(bundle_name)
-    if path.parent != BUNDLE_PATH:
+    path = BUNDLE_DIR / Path(bundle_name)
+    if path.parent != BUNDLE_DIR:
         raise DataValidationError("bundle_name escaped root path!")
 
     if not path.exists():
@@ -85,10 +83,10 @@ def load_trace(bundle_name: str) -> dict[str, str]:
     else:
         raise DataValidationError('`bundle_name` must be a str identifier')
     
-# SHOW
+# SHOW | LIST 
 def local_bundles():
     valid = []
-    for file in list(BUNDLE_PATH.iterdir()):
+    for file in list(BUNDLE_DIR.iterdir()):
         try:
             if not file.is_file():
                 continue
@@ -96,7 +94,7 @@ def local_bundles():
             validate_bundle_name(name)
             
             if name in TRACES:
-                # '*' signifies a bundle as already registered  
+                # '*' signifies that the bundle has a loaded trace
                 name = '*' + name
             valid.append(name)
         except DataValidationError:
@@ -114,15 +112,9 @@ def loaded_traces():
         'result': list(list_traces(TRACES))
     }
 
-def show_trace(bundle_name: str):
-    '''Return a live Trace object as a serialisable dictionary'''
-    trace = get_trace(TRACES, bundle_name)
-    return {'result': trace.to_dict(serialise_events=True)}
-
-
-# INSPECT / DEFAULT LOOKUP BEHAVIOUR
-def inspect_ref(bundle_name: str, ref: str):
-    '''Inspect a live Trace `reference` via `Trace.investigate()`'''
+# INVESTIGATE / DEFAULT LOOKUP BEHAVIOUR
+def investigate_ref(bundle_name: str, ref: str):
+    '''Investigate a live Trace `reference` via `Trace.investigate()`'''
     trace = get_trace(TRACES, bundle_name)
     investigated = trace.investigate(ref, kind='reference')
     if investigated.inspected.exists is False:
@@ -130,30 +122,30 @@ def inspect_ref(bundle_name: str, ref: str):
     
     return {"result": investigated.to_dict()}
 
-def inspect_exec(bundle_name: str, ref: int):
-    '''Inspect a live Trace `execution` via `Trace.investigate()`'''    
+def investigate_exec(bundle_name: str, exec_seq_id: int):
+    '''Investigate a live Trace `execution` via `Trace.investigate()`'''    
     trace = get_trace(TRACES, bundle_name)
 
-    investigated = trace.investigate(ref, kind='seq_id')
+    investigated = trace.investigate(exec_seq_id, kind='seq_id')
     if investigated.inspected.exists is False:
-        raise TraceLookupError(f'Exec {ref} was not found in trace {bundle_name}')
+        raise TraceLookupError(f'Exec {exec_seq_id} was not found in trace {bundle_name}')
     
     return {"result": investigated.to_dict()}
 
-def inspect_actor(bundle_name: str, ref: str):
-    '''Inspect a live Trace `actor` via `Trace.investigate()`'''    
+def investigate_actor(bundle_name: str, actor: str):
+    '''Investigate a live Trace `actor` via `Trace.investigate()`'''    
     trace = get_trace(TRACES, bundle_name)
 
-    investigated = trace.investigate(ref, kind="actor")
+    investigated = trace.investigate(actor, kind="actor")
     if investigated.inspected.exists is False:
-        raise TraceLookupError(f'Actor {ref} was not found in trace {bundle_name}')
+        raise TraceLookupError(f'Actor {actor} was not found in trace {bundle_name}')
     
     return {"result": investigated.to_dict()}
 
-# DEV
-
-
-
+def trace_to_dict(bundle_name: str):
+    '''Return a live Trace object as a serialisable dictionary'''
+    trace = get_trace(TRACES, bundle_name)
+    return {'result': trace.to_dict(serialise_events=True)}
 
 def initialise_traces_from_bundles(ignore_invalid:bool=False):
     '''
@@ -207,30 +199,31 @@ async def initialise_traces(request: Request, call_next):
     
     return await call_next(request)
 
+# DICTIONARIES FOR ENDPOINT REGISTRATION 
 MIDDLEWARE_HANDLERS = [
-    {"type": "http", "function": initialise_traces}
+    {"middleware_type": "http", "func": initialise_traces}
 ]
 
-TIDE_INSPECT_ENDPOINTS = [
-    {"methods": ["GET"], "function": show_trace,                        "path": "/traces/{bundle_name}"},
-    {"methods": ["GET"], "function": inspect_ref,                       "path": "/traces/{bundle_name}/ref"},
-    {"methods": ["GET"], "function": inspect_exec,                      "path": "/traces/{bundle_name}/exec"},
-    {"methods": ["GET"], "function": inspect_actor,                     "path": "/traces/{bundle_name}/actor"},
+TIDE_TRACE_ENDPOINTS = [
+    {"methods": ["GET"], "endpoint": trace_to_dict,                     "path": "/traces/{bundle_name}"},
+    {"methods": ["GET"], "endpoint": investigate_ref,                   "path": "/traces/{bundle_name}/ref"},
+    {"methods": ["GET"], "endpoint": investigate_exec,                  "path": "/traces/{bundle_name}/exec"},
+    {"methods": ["GET"], "endpoint": investigate_actor,                 "path": "/traces/{bundle_name}/actor"},
 ]
 
 # FASTAPI ENDPOINT-HANDLERS DICTIONARY 
 ENDPOINT_HANDLERS = [
-    *TIDE_INSPECT_ENDPOINTS,
+    *TIDE_TRACE_ENDPOINTS,
 
-    {"methods": ["GET"], "function": get_init_meta,                     "path": "/meta/init"},
-    {"methods": ["GET"], "function": redirect_to_docs,                  "path": "/"},
-    {"methods": ["GET"], "function": local_bundles,                     "path": "/local/bundles"},
-    {"methods": ["GET"], "function": loaded_traces,                     "path": "/traces"},
-    {"methods": ["GET"], "function": persisted_bundles,                 "path": "/bundles"},
+    {"methods": ["GET"], "endpoint": get_init_meta,                     "path": "/meta/init"},
+    {"methods": ["GET"], "endpoint": redirect_to_docs,                  "path": "/"},
+    {"methods": ["GET"], "endpoint": local_bundles,                     "path": "/local/bundles"},
+    {"methods": ["GET"], "endpoint": loaded_traces,                     "path": "/traces"},
+    {"methods": ["GET"], "endpoint": persisted_bundles,                 "path": "/bundles"},
 
-    {"methods": ["POST"],"function": load_trace,                        "path": "/register/trace/{bundle_name}"},
-    {"methods": ["POST"],"function": persist_bundle,                    "path": "/register/bundle/{bundle_name}"},
-    {"methods": ["POST"],"function": initialise_traces_from_bundles,    "path": "/dev/initialise_traces"},
+    {"methods": ["POST"],"endpoint": load_trace,                        "path": "/register/trace/{bundle_name}"},
+    {"methods": ["POST"],"endpoint": persist_bundle,                    "path": "/register/bundle/{bundle_name}"},
+    {"methods": ["POST"],"endpoint": initialise_traces_from_bundles,    "path": "/dev/initialise_traces"},
     
 ]
 
