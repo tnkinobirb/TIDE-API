@@ -45,11 +45,19 @@ def init_exc_endpoint(exc: Exception) -> TestClient:
     client = TestClient(app)
     return client
 
+def is_valid_exc_response(exc: Exception, exc_response: Response):
+    return exc_response.json() == {
+        "result": {
+            "str": "testing",
+            "error": exc.__name__
+            }
+         }
+
 def exc_tester(exc: Exception, status_code:int):
     client = init_exc_endpoint(exc)
     response = client.post('/exc', params={'exc': exc.__name__})
     assert response.status_code == status_code
-        
+    assert is_valid_exc_response(exc, response) 
 # TESTER
 @pytest.mark.parametrize(['exc', 'status_code'], tuple(exceptions.values()))
 def test_handle_api_lookup_exception(exc, status_code):
