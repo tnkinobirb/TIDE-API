@@ -221,11 +221,11 @@ class TestStoreHelpers:
         assert init_store() is STORE 
 
     def test_persist_bundle(self, monkeypatch:pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory, endpoints: dict[str, dict[str, Any]], bundle_dir, tide_bundle):
-        def assert_rows():
+        def assert_rows(expected_bundle):
             with sqlite3.connect(request_handlers.TIDEAPIStore.DB_PATH) as conn:
                 rows = conn.execute("SELECT * FROM bundles").fetchall()
             assert len(rows) == 1
-            assert rows == [('example.json', tide_bundle)]
+            assert rows == [('example.json', expected_bundle)]
 
         with monkeypatch.context() as m:
             m.setattr(request_handlers, "STORE", None)
@@ -242,10 +242,12 @@ class TestStoreHelpers:
             )
 
 
-        assert getattr(request_handlers, "STORE") is None
+        assert request_handlers.STORE is None
         apistore_path = getattr(request_handlers.TIDEAPIStore, "DB_PATH")
-        assert not apistore_path.exists()
+        assert not apistore_path.exists()     
 
+        
+        # Valid registration
         endpoint_tester(
             status_code=200, 
             endpoint=endpoint, 
@@ -255,6 +257,13 @@ class TestStoreHelpers:
             params={'replace': False}
         )
 
+        store = request_handlers.STORE        
+        assert isinstance(store, TIDEAPIStore)
+        
+        assert store.get('example.json') == tide_bundle
+        
+        
+        # Duplicate registration
         endpoint_tester(
             status_code=409, 
             endpoint=endpoint, 
@@ -263,7 +272,8 @@ class TestStoreHelpers:
             replace=[('bundle_name', 'example.json')], 
             params={'replace': False}
         )
-
+        
+        # Unknown bundle
         endpoint_tester(
             status_code=404, 
             endpoint=endpoint, 
@@ -272,7 +282,8 @@ class TestStoreHelpers:
             replace=[('bundle_name', 'unknown.json')], 
             params={'replace': False}
         )
-
+        
+        # Invalid bundle name
         endpoint_tester(
             status_code=400, 
             endpoint=endpoint, 
@@ -281,20 +292,49 @@ class TestStoreHelpers:
             replace=[('bundle_name', 'invalid')], 
             params={'replace': False}
         )
-
+        
+        assert store.exists('example.json')
+        (request_handlers.BUNDLE_DIR / 'invalid.json').write_text('1234')
+        assert (request_handlers.BUNDLE_DIR / 'invalid.json').exists()
+        
+        # Invalid replace
+        endpoint_tester(
+            status_code=400, 
+            endpoint=endpoint, 
+            compare_result=False, 
+            method=endpoint['methods'][0],
+            replace=[('bundle_name', 'invalid.json')], 
+            params={'replace': True}
+        )
+        assert not store.exists('invalid.json')        
+        assert store.get('example.json') == tide_bundle
+        adjusted_bundle = json.loads(tide_bundle)
+        adjusted_bundle["manifest"]["run"]["trace"]["name"] = 'adjusted'
+        (request_handlers.BUNDLE_DIR / 'example.json').write_text(json.dumps(adjusted_bundle))
+        # Valid replace
+        endpoint_tester(
+            status_code=200, 
+            endpoint=endpoint, 
+            compare_result=False, 
+            method=endpoint['methods'][0],
+            replace=[('bundle_name', 'example.json')], 
+            params={'replace': True}
+        )
+        
         assert apistore_path.is_file()
         assert apistore_path.name == "bundles.db"
-
-        assert_rows()
+        replaced_bundle = json.loads(store.get('example.json'))
+        assert replaced_bundle["manifest"]["run"]["trace"]["name"] == 'adjusted'
+        assert_rows(json.dumps(adjusted_bundle))
 
         with pytest.raises(DataValidationError):
             persist_bundle('../example.json')
-        assert_rows()
-                        
+        assert_rows(json.dumps(adjusted_bundle))
+
 
         with pytest.raises(AlreadyRegisteredError):
             persist_bundle('example.json')
-        assert_rows()
+        assert_rows(json.dumps(adjusted_bundle))
     
 
 class TestAPIHelperEndpoints:
