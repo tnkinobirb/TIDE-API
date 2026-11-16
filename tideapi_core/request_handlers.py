@@ -11,7 +11,7 @@ from fastapi.responses import RedirectResponse, Response
 from fastapi.concurrency import run_in_threadpool
 
 from tide_tooling import TIDE
-from tideapi_core.config import BUNDLE_DIR
+from tideapi_core.config import BUNDLE_DIR, INIT_FROM_BUNDLE_DIR
 from tideapi_core.helpers.native import validate_tide_bundle
 from tideapi_core.persistence.tideapi_store import TIDEAPIStore
 from tideapi_core.locks import (
@@ -161,7 +161,8 @@ def initialise_traces_from_bundles(ignore_invalid:bool=False) -> tuple[list[str]
     '''    
     invalid = []
     registered= []
-    for bundle_name in persisted_bundles()['result']:
+    bundles = [path.name for path in BUNDLE_DIR.glob('*') if path.is_file()] if INIT_FROM_BUNDLE_DIR else persisted_bundles()['result']
+    for bundle_name in bundles:
         if bundle_name in TRACES:
             # `*` signifies a previously registered bundle
             registered.append("*" + bundle_name)

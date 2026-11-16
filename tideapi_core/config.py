@@ -15,3 +15,7 @@ BUNDLE_DIR = Path(
 DB_PATH = Path(
     os.environ.get("TIDEAPI_DATABASE_PATH", TIDEAPI_DIR / "bundles.db")
 ).expanduser().resolve()
+
+# BEHAVIOUR TOGGLES
+
+INIT_FROM_BUNDLE_DIR = os.environ.get("TIDEAPI_INIT_FROM_BUNDLE_DIR", "true").lower() == "true"
