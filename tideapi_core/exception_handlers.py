@@ -1,3 +1,7 @@
+'''
+    FAST API EXCEPTION HANDLERS
+'''
+
 from fastapi import Request  
 from fastapi.responses import JSONResponse
 from tideapi_core.exceptions import (

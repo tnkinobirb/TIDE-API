@@ -1,3 +1,7 @@
+'''
+    TIDE-API CUSTOM EXCEPTIONS
+'''
+
 class TIDEAPIException(Exception):
     def __init__(self, *args):
         super().__init__(*args)

@@ -1,3 +1,7 @@
+'''
+    FASTAPI ENDPOINT AND MIDDLEWARE HANDLERS
+'''
+
 import json
 from pathlib import Path
 
@@ -70,7 +74,7 @@ def load_trace(bundle_name: str) -> dict[str, str]:
         with REGISTER_LOCK:
             if not init_store().exists(bundle_name):
                 persist_bundle(bundle_name)
-            
+ 
             bundle = json.loads(init_store().get(bundle_name))
 
             if bundle_name in TRACES:
@@ -85,6 +89,7 @@ def load_trace(bundle_name: str) -> dict[str, str]:
     
 # SHOW | LIST 
 def local_bundles():
+    '''List local bundle .json files available within TIDE-API/bundles'''
     valid = []
     for file in list(BUNDLE_DIR.iterdir()):
         try:

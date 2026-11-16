@@ -1,3 +1,7 @@
+'''
+    NATIVE-PYTHON TIDE-API HELPERS
+'''
+
 import json
 from pathlib import Path
 
@@ -8,6 +12,7 @@ from tideapi_core.exceptions import (
 )
 
 def validate_bundle_name(bundle_name: str) -> str:
+    '''Validate a bundle_name string'''
     prohibited = ['/', '\\']    
 
     if not bundle_name.endswith(".json") or any(p in bundle_name for p in prohibited):
@@ -17,6 +22,7 @@ def validate_bundle_name(bundle_name: str) -> str:
 
 # Bundle validation
 def validate_tide_bundle(path: Path) -> str:
+    '''Validate structure of a TIDE bundle.json file via Path'''
     try:
         raw = path.read_text(encoding="utf-8")
         bundle = json.loads(raw)
@@ -80,14 +86,15 @@ def validate_tide_bundle(path: Path) -> str:
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
         raise DataValidationError("Invalid TIDE bundle format") from exc
 
-    
     return raw
 
 # TRACES
 def list_traces(TRACES: dict) -> list:
+    '''List which bundles are loaded as TIDE Traces'''
     return list(TRACES)
 
 def get_trace(TRACES: dict, bundle_name: str) -> dict:
+    '''Retrieve a loaded TIDE Trace via its associated bundle_name'''
     if not isinstance(bundle_name, str):
         raise DataValidationError(f"Invalid bundle_name type: {type(bundle_name)}") 
     trace = TRACES.get(bundle_name)
