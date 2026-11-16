@@ -4,9 +4,10 @@
 
 import json
 from pathlib import Path
+from typing import Any, Awaitable, Callable
 
 from fastapi import Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from fastapi.concurrency import run_in_threadpool
 
 from tide_tooling import TIDE
@@ -88,7 +89,7 @@ def load_trace(bundle_name: str) -> dict[str, str]:
         raise DataValidationError('`bundle_name` must be a str identifier')
     
 # SHOW | LIST 
-def local_bundles():
+def local_bundles() -> dict[str, list[str]]:
     '''List local bundle .json files available within TIDE-API/bundles'''
     valid = []
     for file in list(BUNDLE_DIR.iterdir()):
@@ -111,14 +112,14 @@ def persisted_bundles() -> dict[str, list[str]]:
     bundles = init_store().bundles()
     return {"result": bundles}
 
-def loaded_traces():
+def loaded_traces() -> dict[str, list[str]]:
     '''Return which bundles are currently loaded as live Trace objects'''
     return {
         'result': list(list_traces(TRACES))
     }
 
 # INVESTIGATE / DEFAULT LOOKUP BEHAVIOUR
-def investigate_ref(bundle_name: str, ref: str):
+def investigate_ref(bundle_name: str, ref: str) -> dict[str, Any]:
     '''Investigate a live Trace `reference` via `Trace.investigate()`'''
     trace = get_trace(TRACES, bundle_name)
     investigated = trace.investigate(ref, kind='reference')
@@ -127,7 +128,7 @@ def investigate_ref(bundle_name: str, ref: str):
     
     return {"result": investigated.to_dict()}
 
-def investigate_exec(bundle_name: str, exec_seq_id: int):
+def investigate_exec(bundle_name: str, exec_seq_id: int) -> dict[str, Any]:
     '''Investigate a live Trace `execution` via `Trace.investigate()`'''    
     trace = get_trace(TRACES, bundle_name)
 
@@ -137,7 +138,7 @@ def investigate_exec(bundle_name: str, exec_seq_id: int):
     
     return {"result": investigated.to_dict()}
 
-def investigate_actor(bundle_name: str, actor: str):
+def investigate_actor(bundle_name: str, actor: str) -> dict[str, Any]:
     '''Investigate a live Trace `actor` via `Trace.investigate()`'''    
     trace = get_trace(TRACES, bundle_name)
 
@@ -147,12 +148,12 @@ def investigate_actor(bundle_name: str, actor: str):
     
     return {"result": investigated.to_dict()}
 
-def trace_to_dict(bundle_name: str):
+def trace_to_dict(bundle_name: str) -> dict[str, Any]:
     '''Return a live Trace object as a serialisable dictionary'''
     trace = get_trace(TRACES, bundle_name)
     return {'result': trace.to_dict(serialise_events=True)}
 
-def initialise_traces_from_bundles(ignore_invalid:bool=False):
+def initialise_traces_from_bundles(ignore_invalid:bool=False) -> tuple[list[str], list[str]]:
     '''
     Initialise live Trace objects from TIDEAPIStore sqlite3 `bundles.db`.
     If already initialised, skip instead. 
@@ -180,7 +181,7 @@ def initialise_traces_from_bundles(ignore_invalid:bool=False):
     failed = list(invalid)
     return succeeded, failed
 
-def get_init_meta(request: Request):
+def get_init_meta(request: Request) -> dict[str, Any]:
     '''Return Trace auto-initialisation results'''
     return {"result": getattr(
         request.app.state,
@@ -189,7 +190,7 @@ def get_init_meta(request: Request):
     )}
 
 # MIDDLEWARE
-async def initialise_traces(request: Request, call_next):
+async def initialise_traces(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     '''Middleware function for initialising traces on load'''
     if not hasattr(request.app.state, 'init'):
         request.app.state.init = {}

@@ -13,7 +13,7 @@ from tideapi_core.exceptions import (
     InternalExceptionError, # 500
 )
 
-def handle_trace_lookup_exception(request: Request, exc: TraceLookupError):
+def handle_trace_lookup_exception(request: Request, exc: TraceLookupError) -> JSONResponse:
     return JSONResponse(
         status_code=404,
         content={"result":{
@@ -22,7 +22,7 @@ def handle_trace_lookup_exception(request: Request, exc: TraceLookupError):
         }},
     )
 
-def handle_api_lookup_exception(request: Request, exc: APILookupError):
+def handle_api_lookup_exception(request: Request, exc: APILookupError) -> JSONResponse:
     return JSONResponse(
         status_code=404,
         content={"result":{
@@ -31,7 +31,7 @@ def handle_api_lookup_exception(request: Request, exc: APILookupError):
         }},
     )
 
-def handle_data_validation_exception(request: Request, exc: DataValidationError):
+def handle_data_validation_exception(request: Request, exc: DataValidationError) -> JSONResponse:
     return JSONResponse(
         status_code=400, 
         content={"result":{
@@ -40,7 +40,7 @@ def handle_data_validation_exception(request: Request, exc: DataValidationError)
         }},
     )
     
-def handle_internal_exception(request: Request, exc: InternalExceptionError):
+def handle_internal_exception(request: Request, exc: InternalExceptionError) -> JSONResponse:
     return JSONResponse(
         status_code=500,
         content={"result":{
@@ -49,7 +49,7 @@ def handle_internal_exception(request: Request, exc: InternalExceptionError):
         }},
     )
 
-def handle_already_registered_exception(request: Request, exc: AlreadyRegisteredError):
+def handle_already_registered_exception(request: Request, exc: AlreadyRegisteredError) -> JSONResponse:
     return JSONResponse(
         status_code=409,
         content={"result":{

@@ -5,7 +5,7 @@
 import json
 from pathlib import Path
 
-from tide_tooling import TIDE
+from tide_tooling import TIDE, Trace
 from tideapi_core.exceptions import (
     APILookupError,
     DataValidationError,
@@ -89,11 +89,11 @@ def validate_tide_bundle(path: Path) -> str:
     return raw
 
 # TRACES
-def list_traces(TRACES: dict) -> list:
+def list_traces(TRACES: dict[str, Trace]) -> list[str]:
     '''List which bundles are loaded as TIDE Traces'''
     return list(TRACES)
 
-def get_trace(TRACES: dict, bundle_name: str) -> dict:
+def get_trace(TRACES: dict[str, Trace], bundle_name: str) -> Trace:
     '''Retrieve a loaded TIDE Trace via its associated bundle_name'''
     if not isinstance(bundle_name, str):
         raise DataValidationError(f"Invalid bundle_name type: {type(bundle_name)}") 

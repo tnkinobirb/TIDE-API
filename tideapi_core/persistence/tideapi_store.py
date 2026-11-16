@@ -12,6 +12,7 @@ import sqlite3
 from pathlib import Path
 from threading import RLock
 from contextlib import contextmanager
+from collections.abc import Iterator
 from tideapi_core.config import DB_PATH as DEFAULT_DB_PATH
 from tideapi_core.exceptions import (
     APIStoreLookupError,
@@ -23,8 +24,8 @@ from tideapi_core.exceptions import (
 class TIDEAPIStore:
     '''TIDE-API PERSISTENCE INTERFACE'''
     DB_PATH = DEFAULT_DB_PATH
-    def __init__(self, db_path: Path | None = None):
-       '''Initialise sqlite3 database and associated lock'''
+    def __init__(self, db_path: Path | None = None) -> None:
+        '''Initialise sqlite3 database and associated lock'''
         self.DB_PATH = self.__class__.DB_PATH if db_path is None else db_path
         self.create_bundle_store()
         self.lock = RLock()
@@ -43,7 +44,7 @@ class TIDEAPIStore:
 
     @property
     @contextmanager
-    def apistore(self) -> None:
+    def apistore(self) -> Iterator[sqlite3.Connection]:
         conn = self.connect_to_bundle_db()
 
         try:
@@ -55,7 +56,7 @@ class TIDEAPIStore:
         finally:
             conn.close()
 
-    def create_bundle_store(self):
+    def create_bundle_store(self) -> None:
         '''
         Initialise sqlite3 database if one doesn't exist.
         Otherwise, assert the existing .db configuration.
@@ -171,7 +172,7 @@ class TIDEAPIStore:
 
                 return [tpl[0] for tpl in row]
 
-    def _init_bundles_db(self, conn: sqlite3.Connection) -> sqlite3.Connection:
+    def _init_bundles_db(self, conn: sqlite3.Connection) -> None:
         '''Configure the `bundles` table'''
         cursor = self.get_cursor(conn)
         cursor.execute('create table bundles(bundle_name TEXT PRIMARY KEY, bundle TEXT NOT NULL)')

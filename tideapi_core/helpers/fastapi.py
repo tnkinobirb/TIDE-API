@@ -2,10 +2,11 @@
     FAST-API CENTRIC HELPERS FOR TIDE-API FUNCTIONALITY 
 '''
 
+from typing import Any
 from fastapi import FastAPI
 from tideapi.exceptions import AlreadyRegisteredError
 
-def register_middleware_handlers(app: FastAPI, MIDDLEWARE_HANDLERS: dict) -> None:
+def register_middleware_handlers(app: FastAPI, MIDDLEWARE_HANDLERS: list[dict]) -> None:
     '''Register a middleware function into a FastAPI instance'''
     for middleware in MIDDLEWARE_HANDLERS:
         app.middleware(middleware['middleware_type'])(middleware['func'])
@@ -32,12 +33,12 @@ def initialise_fastapi_app(
     ENDPOINT_HANDLERS: list[dict] | None = None,
     EXCEPTION_HANDLERS: dict | None = None,
     MIDDLEWARE_HANDLERS: list[dict] | None = None,
-    **kwargs
+    **kwargs: Any
 ) -> FastAPI:
+    '''Initialise a FastAPI instance and register endpoint, middleware and exception handlers''' 
     ENDPOINT_HANDLERS = {} if ENDPOINT_HANDLERS is None else ENDPOINT_HANDLERS
     EXCEPTION_HANDLERS = {} if EXCEPTION_HANDLERS is None else EXCEPTION_HANDLERS
     MIDDLEWARE_HANDLERS = {} if MIDDLEWARE_HANDLERS is None else MIDDLEWARE_HANDLERS
-    '''Initialise a FastAPI instance and register endpoint, middleware and exception handlers''' 
     app = FastAPI(exception_handlers=EXCEPTION_HANDLERS, **kwargs)
     register_middleware_handlers(app, MIDDLEWARE_HANDLERS)
     register_endpoint_handlers(app, ENDPOINT_HANDLERS)
