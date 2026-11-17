@@ -12,9 +12,11 @@ class TestMiddleware:
     def setup_monkeypatch(
         self,
         monkeypatch,
+        tmp_path,
     ):
         monkeypatch.setattr(request_handlers, "TRACES", {})
-
+        monkeypatch.setattr(request_handlers, "BUNDLE_DIR", tmp_path)
+        
     def test_initialise_traces(self, monkeypatch, api_db, tide_bundle):
         calls = []
         
@@ -79,25 +81,25 @@ class TestMiddleware:
             assert isinstance(TRACES, dict)
             assert len(TRACES) == 1
 
-
-
 class TestMiddlewareHelpers:
     
     @pytest.fixture(autouse=True)
     def setup_monkeypatch(
         self,
         monkeypatch,
+        tmp_path
     ):
         monkeypatch.setattr(request_handlers, "TRACES", {})
+        monkeypatch.setattr(request_handlers, "BUNDLE_DIR", tmp_path)
 
-    def test_initialise_traces_from_bundles(self, monkeypatch, endpoints, api_db, tide_bundle):
+    def test_initialise_traces_from_bundles(self, monkeypatch, api_db, tide_bundle):
         api_db.set('example.json', tide_bundle)
         monkeypatch.setattr(request_handlers, "STORE", api_db)
         
         TRACES = getattr(request_handlers, "TRACES")
         
         assert len(TRACES) == 0
-        registered, failed = request_handlers.initialise_traces_from_bundles()
+        registered, failed = request_handlers.initialise_traces_from_bundles(ignore_invalid=True)
         assert failed == []
         assert registered == ['example.json']
         

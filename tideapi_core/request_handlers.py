@@ -11,7 +11,7 @@ from fastapi.responses import RedirectResponse, Response
 from fastapi.concurrency import run_in_threadpool
 
 from tide_tooling import TIDE
-from tideapi_core.config import BUNDLE_DIR, INIT_FROM_BUNDLE_DIR
+from tideapi_core.config import BUNDLE_DIR, INCLUDE_BUNDLE_DIR_AT_INIT
 from tideapi_core.helpers.native import validate_tide_bundle
 from tideapi_core.persistence.tideapi_store import TIDEAPIStore
 from tideapi_core.locks import (
@@ -118,6 +118,14 @@ def loaded_traces() -> dict[str, list[str]]:
         'result': list(list_traces(TRACES))
     }
 
+def get_init_meta(request: Request) -> dict[str, Any]:
+    '''Return Trace auto-initialisation results'''
+    
+    return {
+        "result": getattr(request.app.state, "init", {})
+    }
+
+
 # INVESTIGATE / DEFAULT LOOKUP BEHAVIOUR
 def investigate_ref(bundle_name: str, ref: str) -> dict[str, Any]:
     '''Investigate a live Trace `reference` via `Trace.investigate()`'''
@@ -161,7 +169,12 @@ def initialise_traces_from_bundles(ignore_invalid:bool=False) -> tuple[list[str]
     '''    
     invalid = []
     registered= []
-    bundles = [path.name for path in BUNDLE_DIR.glob('*') if path.is_file()] if INIT_FROM_BUNDLE_DIR else persisted_bundles()['result']
+    bundles = persisted_bundles()['result'] 
+    if INCLUDE_BUNDLE_DIR_AT_INIT:
+        for path in BUNDLE_DIR.glob('*.json'):
+            if path.is_file() and path.name not in bundles: 
+                bundles.append(path.name)   
+    
     for bundle_name in bundles:
         if bundle_name in TRACES:
             # `*` signifies a previously registered bundle
@@ -182,15 +195,9 @@ def initialise_traces_from_bundles(ignore_invalid:bool=False) -> tuple[list[str]
     failed = list(invalid)
     return succeeded, failed
 
-def get_init_meta(request: Request) -> dict[str, Any]:
-    '''Return Trace auto-initialisation results'''
-    return {"result": getattr(
-        request.app.state,
-        "init",
-        {}
-    )}
+# MIDDLEWARE 
 
-# MIDDLEWARE
+# DEPRECATED - replaced by `tideapi_core.lifespan` 
 async def initialise_traces(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     '''Middleware function for initialising traces on load'''
     if not hasattr(request.app.state, 'init'):
@@ -207,9 +214,7 @@ async def initialise_traces(request: Request, call_next: Callable[[Request], Awa
     return await call_next(request)
 
 # DICTIONARIES FOR ENDPOINT REGISTRATION 
-MIDDLEWARE_HANDLERS = [
-    {"middleware_type": "http", "func": initialise_traces}
-]
+MIDDLEWARE_HANDLERS = []
 
 TIDE_TRACE_ENDPOINTS = [
     {"methods": ["GET"], "endpoint": trace_to_dict,                     "path": "/traces/{bundle_name}"},

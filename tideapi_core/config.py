@@ -18,4 +18,4 @@ DB_PATH = Path(
 
 # BEHAVIOUR TOGGLES
 
-INIT_FROM_BUNDLE_DIR = os.environ.get("TIDEAPI_INIT_FROM_BUNDLE_DIR", "true").lower() == "true"
+INCLUDE_BUNDLE_DIR_AT_INIT = os.environ.get("TIDEAPI_INCLUDE_BUNDLE_DIR_AT_INIT", "true").lower() == "true"

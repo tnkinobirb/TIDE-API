@@ -1,4 +1,6 @@
 import pytest
+from tideapi.handlers import EXCEPTION_HANDLERS
+from fastapi.responses import Response
 from fastapi.testclient import TestClient
 from tideapi.helpers.fastapi import initialise_fastapi_app
 from tideapi.exceptions import (
@@ -22,17 +24,17 @@ exceptions = {
     ]
 }
 
-from tideapi.handlers import (
-    EXCEPTION_HANDLERS,
-)
+# ENSURE ALL REGISTERED EXCS ARE TESTED
+should_test = [exc.__name__ for exc in EXCEPTION_HANDLERS.keys()]
+assert set(should_test) <= set(exceptions.keys()), f"Missing exception tests: {set(should_test) - set(exceptions.keys())}"
 
-# ENDPOINT 
+# ENDPOINT FUNCTION
 def raise_error(exc: str) -> None:
     if exc in exceptions:
         raise exceptions[exc][0]('testing')
     raise RuntimeError('Cannot raise invalid exception')
 
-# HELPERS
+# TEST HELPERS
 def exc_endpoint() -> dict:
     return {'path':'/exc', 'endpoint': raise_error, 'methods':['POST']}
 
@@ -51,13 +53,14 @@ def is_valid_exc_response(exc: Exception, exc_response: Response):
             "str": "testing",
             "error": exc.__name__
             }
-         }
+        }
 
 def exc_tester(exc: Exception, status_code:int):
     client = init_exc_endpoint(exc)
     response = client.post('/exc', params={'exc': exc.__name__})
     assert response.status_code == status_code
     assert is_valid_exc_response(exc, response) 
+
 # TESTER
 @pytest.mark.parametrize(['exc', 'status_code'], tuple(exceptions.values()))
 def test_handle_api_lookup_exception(exc, status_code):

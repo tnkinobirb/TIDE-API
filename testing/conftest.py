@@ -1,12 +1,13 @@
+import uuid
 import pytest
+import shutil
+import sqlite3
+from fastapi import Request
 from tideapi.persistence import TIDEAPIStore
 from tideapi.handlers import ENDPOINT_HANDLERS 
-from fastapi import Request
 from fastapi.responses import JSONResponse
 from tide_tooling import TIDE, Trace
 from pathlib import Path
-import sqlite3
-import shutil
 
 template_bundle_name = "example.json"
 
@@ -52,8 +53,8 @@ def bundle_dir(tmp_path_factory):
 
 
 @pytest.fixture
-def api_db(monkeypatch, tmp_path: Path) -> sqlite3.Connection:
-    monkeypatch.setattr(TIDEAPIStore, 'DB_PATH', tmp_path / 'bundles.db')
+def api_db(monkeypatch, tmp_path_factory: pytest.TempPathFactory) -> sqlite3.Connection:
+    monkeypatch.setattr(TIDEAPIStore, 'DB_PATH', tmp_path_factory.mktemp(uuid.uuid4().hex) / 'bundles.db')
     return TIDEAPIStore()
 
 @pytest.fixture
