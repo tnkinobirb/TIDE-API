@@ -8,5 +8,3 @@ from tideapi_core.helpers.fastapi import (
     register_endpoint_handlers,
     register_middleware_handlers,
 )
-
-

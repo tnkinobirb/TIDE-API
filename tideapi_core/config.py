@@ -7,7 +7,7 @@
         DB_PATH     - The path of a TIDEAPIStore's sqlite3 `bundles.db` instance
 
     BUNDLES:
-'''     
+'''
 import os
 from pathlib import Path
 
@@ -15,7 +15,7 @@ from pathlib import Path
 TIDEAPI_DIR = Path(__file__).parents[1]
 
 # Point to a local directory containing bundle.json files
-BUNDLE_DIR = Path( 
+BUNDLE_DIR = Path(
     os.environ.get("TIDEAPI_BUNDLE_DIR", TIDEAPI_DIR / "bundles")
 ).expanduser().resolve()
 

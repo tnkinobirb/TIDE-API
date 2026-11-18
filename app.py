@@ -8,15 +8,15 @@ To setup a TIDE-API instance:
         git clone https://github.com/tnkinobirb/TIDE-API
 
     Then enter the following commands:
-        
+
         First, if you haven't setup a virtual environment:
             Windows (powershell):
-                python -m venv .venv 
+                python -m venv .venv
                 . .venv/Scripts/activate
             Linux:
-                python -m venv .venv 
+                python -m venv .venv
                 . .venv/bin/activate
-            
+
         Then:
             git clone https://github.com/tnkinobirb/TIDE-Tooling
             python -m pip install TIDE-Tooling/. fastapi[standard]
@@ -29,7 +29,7 @@ To setup a TIDE-API instance:
 
     ENV CONFIGURATION:
         Adjust environment variables to change directory locations or desired behaviour.
-        
+
         How to set an environment variable (temporarily):
             Windows (Powershell):
                 $Env:VAR='value'
@@ -38,17 +38,17 @@ To setup a TIDE-API instance:
             Linux:
                 export VAR='value'
                 e.g:
-                    export TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING='false'           
-        
+                    export TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING='false'
+
         PATHS:
-            TIDEAPI_DATABASE_PATH: Where TIDEAPIStore's database should be created, or is located. 
-            TIDEAPI_BUNDLE_DIR: The directory in which local bundle .json files are discovered.  
-        
+            TIDEAPI_DATABASE_PATH: Where TIDEAPIStore's database should be created, or is located.
+            TIDEAPI_BUNDLE_DIR: The directory in which local bundle .json files are discovered.
+
         BEHAVIOUR CONFIGS:
             TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING: 'true'|'false'
                 - 'true': Include local bundle .json files when loading traces
                 - 'false': Only load bundles .json strings persisted within `bundles.db`
-'''    
+'''
 
 from tideapi.fastapi import initialise_fastapi_app, lifespan
 from tideapi.handlers import (
@@ -62,6 +62,5 @@ app = initialise_fastapi_app(
     ENDPOINT_HANDLERS=ENDPOINT_HANDLERS,
     EXCEPTION_HANDLERS=EXCEPTION_HANDLERS,
     MIDDLEWARE_HANDLERS=MIDDLEWARE_HANDLERS,
-    lifespan=lifespan,
-    debug=True # Remove before prod
+    lifespan=lifespan
 )

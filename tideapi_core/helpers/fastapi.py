@@ -1,5 +1,5 @@
 '''
-    FAST-API CENTRIC HELPERS FOR TIDE-API FUNCTIONALITY 
+    FAST-API CENTRIC HELPERS FOR TIDE-API FUNCTIONALITY
 '''
 from typing import Any
 from fastapi import FastAPI
@@ -9,7 +9,7 @@ def register_middleware_handlers(app: FastAPI, MIDDLEWARE_HANDLERS: list[dict]) 
     '''Register a middleware function into a FastAPI instance'''
     for middleware in MIDDLEWARE_HANDLERS:
         app.middleware(middleware['middleware_type'])(middleware['func'])
-    
+
 def register_endpoint_handlers(app: FastAPI, ENDPOINT_HANDLERS: list[dict]) -> None:
     '''Register an endpoint function into a FastAPI instance'''
     seen = {}
@@ -20,12 +20,12 @@ def register_endpoint_handlers(app: FastAPI, ENDPOINT_HANDLERS: list[dict]) -> N
             raise AlreadyRegisteredError(f"Route for {endpoint['path']} already exists!")
 
         seen[endpoint['path']] = endpoint
-        
+
     for endpoint in list(seen.values()):
         app.add_api_route(
-            path=endpoint['path'], 
+            path=endpoint['path'],
             methods=endpoint['methods'],
-            endpoint=endpoint['endpoint'], 
+            endpoint=endpoint['endpoint'],
         )
 
 def initialise_fastapi_app(
@@ -34,7 +34,7 @@ def initialise_fastapi_app(
     MIDDLEWARE_HANDLERS: list[dict] | None = None,
     **kwargs: Any
 ) -> FastAPI:
-    '''Initialise a FastAPI instance and register endpoint, middleware and exception handlers''' 
+    '''Initialise a FastAPI instance and register endpoint, middleware and exception handlers'''
     ENDPOINT_HANDLERS = {} if ENDPOINT_HANDLERS is None else ENDPOINT_HANDLERS
     EXCEPTION_HANDLERS = {} if EXCEPTION_HANDLERS is None else EXCEPTION_HANDLERS
     MIDDLEWARE_HANDLERS = {} if MIDDLEWARE_HANDLERS is None else MIDDLEWARE_HANDLERS
@@ -42,5 +42,3 @@ def initialise_fastapi_app(
     register_middleware_handlers(app, MIDDLEWARE_HANDLERS)
     register_endpoint_handlers(app, ENDPOINT_HANDLERS)
     return app
-
-

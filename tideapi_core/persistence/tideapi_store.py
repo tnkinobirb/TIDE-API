@@ -5,7 +5,7 @@
 
     ROLE: PROVIDE AN INTERFACE TO ENABLE THE PERSISTENCE OF TIDE OBJECTS
 
-    SUPPORTED TIDE OBJECTS: 
+    SUPPORTED TIDE OBJECTS:
         - BUNDLE (as JSON string)
 '''
 
@@ -26,9 +26,9 @@ class TIDEAPIStore:
     '''
     TIDE-API PERSISTENCE INTERFACE
         Initialises or connects to a TIDEAPIStore sqlite3 `bundles.db` database.
-        Provides CRUD operations over persisted TIDE objects supported by TIDE-API. 
+        Provides CRUD operations over persisted TIDE objects supported by TIDE-API.
 
-        SUPPORTED TIDE OBJECTS: 
+        SUPPORTED TIDE OBJECTS:
             - BUNDLE (as JSON string)
 
         TIDEAPIStore's default database path may be configured
@@ -46,7 +46,7 @@ class TIDEAPIStore:
         conn = sqlite3.connect(self.DB_PATH)
         return conn
 
-    @staticmethod 
+    @staticmethod
     def get_cursor(conn: sqlite3.Connection) -> sqlite3.Cursor:
         '''Retrieve sqlite3 database cursor'''
         if not isinstance(conn, sqlite3.Connection):
@@ -62,9 +62,9 @@ class TIDEAPIStore:
         try:
             yield conn
             conn.commit()
-        except Exception as e:
+        except Exception:
             conn.rollback()
-            raise e
+            raise
         finally:
             conn.close()
 
@@ -91,7 +91,7 @@ class TIDEAPIStore:
                     raise InvalidAPIStoreConfigurationError(
                         "`bundles.db` creation failed during configuration. \n" \
                         "This must be a programming error. \n" \
-                        f"e = {type(e).__name__} {str(e)}. \n" 
+                        f"e = {type(e).__name__} {str(e)}. \n"
                     )
 
     def set(self, bundle_name: str, bundle: str, replace:bool=False) -> None:
@@ -118,7 +118,7 @@ class TIDEAPIStore:
                         )
                         row = cursor.fetchone()
                         if row is None:
-                            raise APIStoreLookupError(f"Store.set(replace=True) via bundle_name: {bundle_name} not found!")                
+                            raise APIStoreLookupError(f"Store.set(replace=True) via bundle_name: {bundle_name} not found!")
                     else:
                         raise AlreadyRegisteredError(
                             f"{bundle_name} is already registered in bundles.db" \
@@ -127,7 +127,7 @@ class TIDEAPIStore:
 
                 self.get_cursor(conn).execute(
                     "INSERT INTO bundles (bundle_name, bundle)" \
-                    "VALUES (?, ?)", (bundle_name, bundle) 
+                    "VALUES (?, ?)", (bundle_name, bundle)
 	            )
 
     def get(self, bundle_name: str) -> str:
@@ -145,7 +145,7 @@ class TIDEAPIStore:
                 return row[0]
 
     def pop(self, bundle_name: str) -> str:
-        '''Retrieve and remove a persisted bundle from the database via bundle_name''' 
+        '''Retrieve and remove a persisted bundle from the database via bundle_name'''
         if not isinstance(bundle_name, str):
             raise DataValidationError("Store.pop() only accepts str values")
 
@@ -156,7 +156,7 @@ class TIDEAPIStore:
                 )
                 row = cursor.fetchone()
                 if row is None:
-                    raise APIStoreLookupError("bundle_name {bundle_name} not found!")
+                    raise APIStoreLookupError(f"bundle_name {bundle_name} not found!")
                 return row[0]
 
     def exists(self, bundle_name: str) -> bool:
@@ -190,24 +190,28 @@ class TIDEAPIStore:
 
     def _assert_expected_api_store_config(self, conn: sqlite3.Connection) -> None:
         '''Assert the expected configuration of `bundles.db`'''
+        def require(condition: bool, message: str) -> None:
+            if not condition:
+                raise ValueError(message)
+
         cols = []
         try:
-            assert self.DB_PATH.name.lower() == 'bundles.db'
+            require(self.DB_PATH.name.lower() == 'bundles.db', "DB_PATH name must be bundles.db")
             cursor = self.get_cursor(conn)
             tables = list(cursor.execute(
                 "SELECT name FROM sqlite_schema " \
                 "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
             ))
 
-            assert len(tables) == 1, f"len(tables) {len(tables)} == 1"
-            assert len(tables[0]) == 1, "len(tables[0]) == 1"
-            assert tables[0][0] == 'bundles', f"tables[0][0] == 'bundles'"
+            require(len(tables) == 1, f"len(tables) {len(tables)} == 1")
+            require(len(tables[0]) == 1, "len(tables[0]) == 1")
+            require(tables[0][0] == 'bundles', "tables[0][0] == 'bundles'")
 
             cursor.execute("SELECT * FROM bundles")
             cols = [col[0] for col in cursor.description]
-            assert len(cols) == 2, "len(cols) == 2"
-            assert cols[0] == "bundle_name", 'cols[0] == "bundle_name"'
-            assert cols[1] == "bundle", 'cols[1] == "bundle"'
+            require(len(cols) == 2, "len(cols) == 2")
+            require(cols[0] == "bundle_name", 'cols[0] == "bundle_name"')
+            require(cols[1] == "bundle", 'cols[1] == "bundle"')
 
             expected_cols = [
                 (0, 'bundle_name', 'TEXT', 0, None, 1),
@@ -216,8 +220,8 @@ class TIDEAPIStore:
 
             cursor = cursor.execute("PRAGMA table_info(bundles)")
             cols = cursor.fetchall()
-            assert len(cols) == len(expected_cols), "PRAGMA lrn mismatch"
-            assert all([cols[idx] == expected_cols[idx] for idx, _ in enumerate(cols)]), f"PRAGMA col mismatch: {cols}"
+            require(len(cols) == len(expected_cols), "PRAGMA length mismatch")
+            require(all([cols[idx] == expected_cols[idx] for idx, _ in enumerate(cols)]), f"PRAGMA col mismatch: {cols}")
         except Exception as e:
             raise InvalidAPIStoreConfigurationError(
                 "`bundles.db` exists but its configuration is invalid. \n" \

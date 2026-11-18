@@ -3,22 +3,26 @@ import sqlite3
 from pathlib import Path
 from pytest import TempPathFactory
 from tideapi.persistence import TIDEAPIStore
-from tideapi.exceptions import AlreadyRegisteredError, InvalidAPIStoreConfigurationError, DataValidationError, APIStoreLookupError
+from tideapi.exceptions import (
+    APIStoreLookupError,
+    DataValidationError,
+    AlreadyRegisteredError,
+    InvalidAPIStoreConfigurationError,
+)
 
 # TEST HELPERS
-def init_test_apistore(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def init_test_apistore(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TIDEAPIStore:
     monkeypatch.setattr(TIDEAPIStore, 'DB_PATH', tmp_path / 'bundles.db')
-    apistore = TIDEAPIStore()
-    conn = sqlite3.connect(TIDEAPIStore.DB_PATH)
-    return conn, apistore
+    db = TIDEAPIStore()
+    return db
 
 def sanitise_name(string:str) -> str:
     return '"' + string.replace('"', '""') + '"'
 
-def extract_cols(cursor):
+def extract_cols(cursor: sqlite3.Cursor) -> list[str]:
     return [col[0] for col in cursor.description]
 
-def assert_table_cols(cursor:sqlite3.Cursor, table_name:str, expected_cols:list[str,]):
+def assert_table_cols(cursor:sqlite3.Cursor, table_name:str, expected_cols:list[str]) -> None:
     cursor.execute(f'SELECT * FROM {sanitise_name(table_name)}')
     columns = extract_cols(cursor)
     assert len(columns) == len(expected_cols)
@@ -26,247 +30,205 @@ def assert_table_cols(cursor:sqlite3.Cursor, table_name:str, expected_cols:list[
 
 class TestStoreInit:
 
-    def test_create_bundle_store_on_APIStore_init(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-        assert not any(list(tmp_path.iterdir()))                                                                             
-        conn, _ = init_test_apistore(monkeypatch, tmp_path)
-        assert any(next(file.name for file in list(tmp_path.iterdir()) if file.name == 'bundles.db'))
-        cursor = conn.cursor()
+    def test_create_bundle_store_on_APIStore_init(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        assert not any(list(tmp_path.iterdir()))
+        db = init_test_apistore(monkeypatch, tmp_path)
+        assert (tmp_path / 'bundles.db').is_file()
+        with db.apistore as conn:
+            cursor = conn.cursor()
 
-        tables = list(cursor.execute(
-            "SELECT name FROM sqlite_schema " \
-            "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-        ))
+            tables = list(cursor.execute(
+                "SELECT name FROM sqlite_schema " \
+                "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            ))
 
-        assert len(tables) == 1
-        assert tables[0][0] == "bundles"
+            assert len(tables) == 1
+            assert tables[0][0] == "bundles"
 
-        assert_table_cols(
-            cursor, 
-            table_name='bundles', 
-            expected_cols=['bundle_name', 'bundle']
-        )
+            assert_table_cols(
+                cursor,
+                table_name='bundles',
+                expected_cols=['bundle_name', 'bundle']
+            )
 
-    def test_APIStore_init_uses_preexisting_valid_store(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-        assert not any(list(tmp_path.iterdir()))                                                                             
-        conn, _ = init_test_apistore(monkeypatch, tmp_path)
-        assert any(next(file.name for file in list(tmp_path.iterdir()) if file.name == 'bundles.db'))
-        cursor = conn.cursor()
-        
-        assert_table_cols(
-            cursor, 
-            table_name='bundles', 
-            expected_cols=['bundle_name', 'bundle']
-        )
+    def test_APIStore_init_uses_preexisting_valid_store(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        assert not any(list(tmp_path.iterdir()))
+        db = init_test_apistore(monkeypatch, tmp_path)
+        assert (tmp_path / 'bundles.db').is_file()
+        with db.apistore as conn:
+            cursor = conn.cursor()
 
-        empty = not list(conn.execute("SELECT * FROM bundles"))
-        assert empty is True
+            assert_table_cols(
+                cursor,
+                table_name='bundles',
+                expected_cols=['bundle_name', 'bundle']
+            )
 
-        cursor.execute("INSERT INTO bundles (bundle_name, bundle) VALUES ('example.json', '1234')")
-        conn.commit()
-        before = list(conn.execute("SELECT * FROM bundles"))
+            empty = not list(conn.execute("SELECT * FROM bundles"))
+            assert empty is True
 
-        conn, _ = init_test_apistore(monkeypatch, tmp_path)
+            cursor.execute("INSERT INTO bundles (bundle_name, bundle) VALUES ('example.json', '1234')")
+            before = list(conn.execute("SELECT * FROM bundles"))
 
-        assert_table_cols(
-            cursor, 
-            table_name='bundles', 
-            expected_cols=['bundle_name', 'bundle']
-        )
+        db = init_test_apistore(monkeypatch, tmp_path)
 
-        after = list(conn.execute("SELECT * FROM bundles"))
-        assert before == after
+        with db.apistore as conn:
+            cursor = conn.cursor()
+            assert_table_cols(
+                cursor,
+                table_name='bundles',
+                expected_cols=['bundle_name', 'bundle']
+            )
 
-        conn.close()
-        
-        
-    def test_APIStore_init_denies_preexisting_invalid_store(self, monkeypatch: pytest.MonkeyPatch, tmp_path_factory: TempPathFactory):
+            after = list(conn.execute("SELECT * FROM bundles"))
+            assert before == after
+
+
+    def test_APIStore_init_denies_preexisting_invalid_store(self, monkeypatch: pytest.MonkeyPatch, tmp_path_factory: TempPathFactory) -> None:
         # Test empty database
         empty_path = tmp_path_factory.mktemp("empty_path")
 
-        assert not any(list(empty_path.iterdir()))        
-        conn = sqlite3.connect(empty_path / 'bundles.db')
+        assert not any(list(empty_path.iterdir()))
+        sqlite3.connect(empty_path / 'bundles.db').close()
 
         with pytest.raises(InvalidAPIStoreConfigurationError):
             init_test_apistore(monkeypatch, empty_path)
-        conn.close()
 
         # Test invalid config
         tmp_path = tmp_path_factory.mktemp("tmp_path")
 
-        conn, _ = init_test_apistore(monkeypatch, tmp_path)
-        assert any(next(file.name for file in list(tmp_path.iterdir()) if file.name == 'bundles.db'))
+        db = init_test_apistore(monkeypatch, tmp_path)
+        assert (tmp_path / 'bundles.db').is_file()
+        with db.apistore as conn:
+            cursor = conn.cursor()
 
-        cursor = conn.cursor()
-        
-        assert_table_cols(
-            cursor, 
-            table_name='bundles', 
-            expected_cols=['bundle_name', 'bundle']
-        )
-
-        empty = not list(conn.execute("SELECT * FROM bundles"))
-        assert empty is True
-
-        conn.execute('ALTER TABLE bundles ADD invalid TEXT')
-
-        assert_table_cols(
-            cursor, 
-            table_name='bundles', 
-            expected_cols=['bundle_name', 'bundle', 'invalid']
-        )
-        
-        with pytest.raises(AssertionError):
             assert_table_cols(
-                cursor, 
-                table_name='bundles', 
+                cursor,
+                table_name='bundles',
                 expected_cols=['bundle_name', 'bundle']
+            )
+
+            empty = not list(conn.execute("SELECT * FROM bundles"))
+            assert empty is True
+
+            conn.execute('ALTER TABLE bundles ADD invalid TEXT')
+
+            assert_table_cols(
+                cursor,
+                table_name='bundles',
+                expected_cols=['bundle_name', 'bundle', 'invalid']
             )
 
         with pytest.raises(InvalidAPIStoreConfigurationError):
             init_test_apistore(monkeypatch, tmp_path)
 
-        conn.close()
-
 class TestClassOperations:
 
-    def test_store_set(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-        conn, apistore = init_test_apistore(monkeypatch, tmp_path)
-        
-        empty = not list(conn.execute("SELECT * FROM bundles"))
-        assert empty 
+    def test_store_set(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        db = init_test_apistore(monkeypatch, tmp_path)
 
-        apistore.set("example.json", "1234")
-        rows = list(conn.execute("SELECT * FROM bundles"))
-        assert len(rows) == 1 
-        assert rows[0] == ("example.json", "1234")
+        assert not db.bundles()
+
+        db.set("example.json", "1234")
+        assert db.bundles() == ["example.json"]
+        assert db.get("example.json") == "1234"
 
         # invalid inputs
         with pytest.raises(DataValidationError):
-            apistore.set(1, lambda: None)
-        
+            db.set(1, lambda: None)
+
         # test get still works correctly after failure
-        assert apistore.get("example.json") == "1234"
-        
-        # duplicate registration  
+        assert db.get("example.json") == "1234"
+
+        # duplicate registration
         with pytest.raises(AlreadyRegisteredError):
-            apistore.set("example.json", "1234")
-        assert apistore.get("example.json") == "1234"
+            db.set("example.json", "1234")
+        assert db.get("example.json") == "1234"
 
         with pytest.raises(AlreadyRegisteredError):
-            apistore.set("example.json", "0")
-        assert apistore.get("example.json") == "1234"
-        
-        rows = list(conn.execute("SELECT * FROM bundles")) 
-        assert len(rows) == 1 
-        assert rows[0] == ("example.json", "1234")
-        assert apistore.get("example.json") == "1234"
+            db.set("example.json", "0")
+        assert db.get("example.json") == "1234"
 
-        # replace existing registration  
-        apistore.set("example.json", "4321", replace=True)
-        rows = list(conn.execute("SELECT * FROM bundles")) 
-        assert len(rows) == 1
-        assert rows[0] == ("example.json", "4321")
-        assert apistore.get("example.json") == "4321"
+        assert db.bundles() == ["example.json"]
+        assert db.get("example.json") == "1234"
 
-        conn.close()
+        # replace existing registration
+        db.set("example.json", "4321", replace=True)
+        assert db.bundles() == ["example.json"]
+        assert db.get("example.json") == "4321"
 
-    def test_store_get(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-        conn, apistore = init_test_apistore(monkeypatch, tmp_path)
+    def test_store_get(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        db = init_test_apistore(monkeypatch, tmp_path)
 
-        empty = not list(conn.execute("SELECT * FROM bundles"))
-        assert empty 
+        assert not db.bundles()
 
-        # Init store    
-        conn.cursor().execute("INSERT INTO bundles (bundle_name, bundle) VALUES ('example.json', '1234')")
-        conn.commit()
+        # Init store
+        db.set("example.json", "1234")
 
-        rows = list(conn.execute("SELECT * FROM bundles"))
-        assert len(rows) == 1 
-        assert rows[0] == ("example.json", "1234")
+        assert db.bundles() == ["example.json"]
 
         # Test get
-        assert apistore.get("example.json") == "1234"
+        assert db.get("example.json") == "1234"
 
         # Non-existent target
         with pytest.raises(APIStoreLookupError):
-            apistore.get("nonexistent")
+            db.get("nonexistent")
 
         # Invalid data
         with pytest.raises(DataValidationError):
-            apistore.get(lambda: None)
+            db.get(lambda: None)
 
-        conn.close()
+    def test_store_pop(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        db = init_test_apistore(monkeypatch, tmp_path)
 
-    def test_store_pop(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-        conn, apistore = init_test_apistore(monkeypatch, tmp_path)
+        assert not db.bundles()
 
-        empty = not list(conn.execute("SELECT * FROM bundles"))
-        assert empty 
-
-        # Init store    
-        conn.cursor().execute("INSERT INTO bundles (bundle_name, bundle) VALUES ('example.json', '1234')")
-        conn.commit()
-        
-        rows = list(conn.execute("SELECT * FROM bundles"))
-        assert rows 
-        assert len(rows) == 1
-        assert rows[0] == ("example.json", "1234")
-        
-        # Test
-        assert apistore.pop("example.json") == "1234"
-        conn.commit()
-        
-        after_rows = list(conn.execute("SELECT * FROM bundles"))
-        assert not after_rows 
-
-        # Non-existent target
-        with pytest.raises(APIStoreLookupError):
-            apistore.pop("nonexistent")
-
-        # Invalid data
-        with pytest.raises(DataValidationError):
-            apistore.pop(lambda: None)
-        
-        conn.close()
-
-    def test_store_exists(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-        conn, apistore = init_test_apistore(monkeypatch, tmp_path)
-
-        empty = not list(conn.execute("SELECT * FROM bundles"))
-        assert empty 
-
-        # Init store    
-        conn.cursor().execute("INSERT INTO bundles (bundle_name, bundle) VALUES ('example.json', '1234')")
-        conn.commit()
-        
-        rows = list(conn.execute("SELECT * FROM bundles"))
-        assert rows 
-        assert len(rows) == 1
-        assert rows[0] == ("example.json", "1234")
-        
-        assert apistore.exists("example.json") 
-        
-        # Non-existent target
-        assert apistore.exists("nonexistent") is False
-
-        # Invalid data
-        with pytest.raises(DataValidationError):
-            apistore.exists(lambda: None)
-        
-        conn.close()
-
-    def test_bundles_listing(self, monkeypatch: pytest.MonkeyPatch, tmp_path_factory: TempPathFactory):
-        bundle_path = tmp_path_factory.mktemp('bundles')
-        conn, apistore = init_test_apistore(monkeypatch, bundle_path)
-    
         # Init store
-        conn.cursor().execute("INSERT INTO bundles (bundle_name, bundle) VALUES ('example.json', '1234')")
-        conn.commit()
+        db.set("example.json", "1234")
 
-        assert list(apistore.bundles()) == ['example.json']
-        conn.close()
+        assert db.bundles() == ["example.json"]
+
+        # Test
+        assert db.pop("example.json") == "1234"
+
+        assert not db.bundles()
+
+        # Non-existent target
+        with pytest.raises(APIStoreLookupError):
+            db.pop("nonexistent")
+
+        # Invalid data
+        with pytest.raises(DataValidationError):
+            db.pop(lambda: None)
+
+    def test_store_exists(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        db = init_test_apistore(monkeypatch, tmp_path)
+
+        assert not db.bundles()
+
+        # Init store
+        db.set("example.json", "1234")
+
+        assert db.bundles() == ["example.json"]
+
+        assert db.exists("example.json")
+
+        # Non-existent target
+        assert db.exists("nonexistent") is False
+
+        # Invalid data
+        with pytest.raises(DataValidationError):
+            db.exists(lambda: None)
+
+    def test_bundles_listing(self, monkeypatch: pytest.MonkeyPatch, tmp_path_factory: TempPathFactory) -> None:
+        bundle_path = tmp_path_factory.mktemp('bundles')
+        db = init_test_apistore(monkeypatch, bundle_path)
+
+        # Init store
+        db.set("example.json", "1234")
+
+        assert list(db.bundles()) == ['example.json']
 
         empty_path = tmp_path_factory.mktemp('empty')
-        e_conn, e_apistore = init_test_apistore(monkeypatch, empty_path)
-        assert e_apistore.bundles() == []
-        e_conn.close()
+        empty_db = init_test_apistore(monkeypatch, empty_path)
+        assert empty_db.bundles() == []

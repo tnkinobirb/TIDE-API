@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.concurrency import run_in_threadpool
 from tideapi.handlers import initialise_traces_from_bundles
 
-# TIDE-API FASTAPI-LIFESPAN FUNCTION 
+# TIDE-API FASTAPI-LIFESPAN FUNCTION
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     '''Lifespan manager function for TIDE-API FastAPI application instances'''

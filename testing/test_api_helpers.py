@@ -1,32 +1,36 @@
 import pytest
 import fastapi
 import fastapi.testclient
+from typing import Any, Callable
+from tide_tooling import Trace
 
 from tideapi_core.helpers.native import (
+    get_trace,
     list_traces,
     validate_bundle_name,
-    get_trace,
 )
-
 from tideapi.fastapi import (
     initialise_fastapi_app,
     register_endpoint_handlers,
     register_middleware_handlers,
 )
-
-from tideapi.exceptions import (DataValidationError, APILookupError, AlreadyRegisteredError)
+from tideapi.exceptions import (
+    APILookupError,
+    DataValidationError,
+    AlreadyRegisteredError,
+)
 
 class TestNativeHelpers:
 
-    def test_valid_bundle_name(self, sample_bundle_name):
+    def test_valid_bundle_name(self, sample_bundle_name: str) -> None:
         result = validate_bundle_name(sample_bundle_name)
         assert result == sample_bundle_name
 
-    def test_unknown_bundle_name(self, sample_traces_dict):
+    def test_unknown_bundle_name(self, sample_traces_dict: dict[str, Trace]) -> None:
         with pytest.raises(APILookupError):
             get_trace(sample_traces_dict, "non-existent-id")
 
-    def test_invalid_extension(self):
+    def test_invalid_extension(self) -> None:
         with pytest.raises(DataValidationError):
             validate_bundle_name("example.exe")
 
@@ -36,17 +40,17 @@ class TestNativeHelpers:
         "..\\example",
         "../path/to/example.json",
     ])
-    def test_invalid_names(self, name):
+    def test_invalid_names(self, name: str) -> None:
         with pytest.raises(DataValidationError):
             validate_bundle_name(name)
 
-    def test_list_traces(self, sample_traces_dict, sample_bundle_name):
+    def test_list_traces(self, sample_traces_dict: dict[str, Trace], sample_bundle_name: str) -> None:
         bundle_names = list_traces(sample_traces_dict)
         assert type(bundle_names) is list
         assert len(bundle_names) == 1
         assert bundle_names[0] == sample_bundle_name
 
-    def test_get_trace(self, sample_traces_dict, sample_bundle_name):
+    def test_get_trace(self, sample_traces_dict: dict[str, Trace], sample_bundle_name: str) -> None:
         trace = get_trace(sample_traces_dict, sample_bundle_name)
         assert trace is sample_traces_dict[sample_bundle_name]
 
@@ -55,10 +59,9 @@ class TestNativeHelpers:
 
         with pytest.raises(DataValidationError):
             get_trace(sample_traces_dict, 1)
-            
 
 class TestFastAPIHelpers:
-    def test_endpoint_registration(self, sample_endpoints):
+    def test_endpoint_registration(self, sample_endpoints: list[dict[str, Any]]) -> None:
         app = fastapi.FastAPI()
         preregistered_endpoints = list(app.routes)
         register_endpoint_handlers(app, sample_endpoints)
@@ -74,7 +77,7 @@ class TestFastAPIHelpers:
             assert response.status_code == 200
             assert response.json() == {'result':'example'}
 
-    def test_middleware_registration(self, sample_middleware):
+    def test_middleware_registration(self, sample_middleware: list[dict[str, Any]]) -> None:
         app = fastapi.FastAPI()
         preregistered_middleware = list(app.user_middleware)
         register_middleware_handlers(app, sample_middleware)
@@ -93,7 +96,7 @@ class TestFastAPIHelpers:
         assert response.headers['Test-Middleware_0'] == 'example_0'
         assert response.headers['Test-Middleware_1'] == 'example_1'
 
-    def test_fastapi_app_initialisation_succeeds_with_no_handlers(self):    
+    def test_fastapi_app_initialisation_succeeds_with_no_handlers(self) -> None:
         app = initialise_fastapi_app()
         app.add_api_route(
             '/',
@@ -105,19 +108,19 @@ class TestFastAPIHelpers:
         assert response.status_code == 200
         assert response.json() == {'result':'example'}
 
-    def test_fastapi_app_initialisation(self, sample_endpoints, sample_middleware, sample_exception_handlers):
+    def test_fastapi_app_initialisation(self, sample_endpoints: list[dict[str, Any]], sample_middleware: list[dict[str, Any]], sample_exception_handlers: dict[type[Exception], Callable[..., Any]]) -> None:
         app = initialise_fastapi_app(ENDPOINT_HANDLERS=sample_endpoints, EXCEPTION_HANDLERS=sample_exception_handlers, MIDDLEWARE_HANDLERS=sample_middleware, )
         client = fastapi.testclient.TestClient(app)
 
-        def raise_idx_exc(): raise IndexError()
-        def raise_val_exc(): raise ValueError()
+        def raise_idx_exc() -> None: raise IndexError()
+        def raise_val_exc() -> None: raise ValueError()
 
         for (path, exc, status, error) in [
-            ('/idx_exc', raise_idx_exc, 404, IndexError), 
+            ('/idx_exc', raise_idx_exc, 404, IndexError),
             ('/val_exc', raise_val_exc, 500, ValueError)
         ]:
-             
-            app.add_api_route(   
+
+            app.add_api_route(
                 path,
                 exc,
                 methods=['GET']
@@ -129,8 +132,8 @@ class TestFastAPIHelpers:
             assert response.status_code == status
             assert response.json() == {"error": error.__name__}
             assert response.headers['Test-Middleware_0'] == 'example_0'
-            assert response.headers['Test-Middleware_1'] == 'example_1'        
-        
+            assert response.headers['Test-Middleware_1'] == 'example_1'
+
         for endpoint in sample_endpoints:
             response = client.get(endpoint['path'])
             assert response.status_code == 200
@@ -138,8 +141,8 @@ class TestFastAPIHelpers:
             assert response.headers['Test-Middleware_0'] == 'example_0'
             assert response.headers['Test-Middleware_1'] == 'example_1'
 
-    def test_post_on_get_returns_405(self):
-        endpoint_handler = {   
+    def test_post_on_get_returns_405(self) -> None:
+        endpoint_handler = {
             'path':'/',
             'endpoint': lambda: {'result': 'example'},
             'methods':['GET']
@@ -149,14 +152,14 @@ class TestFastAPIHelpers:
         response= client.request(method="POST", url='/')
         assert response.status_code == 405
 
-    def test_fastapi_double_registration_raises(self):
-        endpoint_handler = {   
+    def test_fastapi_double_registration_raises(self) -> None:
+        endpoint_handler = {
             'path':'/',
             'endpoint': lambda: {'result': 'example'},
             'methods': ['GET']
         }
         app = initialise_fastapi_app(ENDPOINT_HANDLERS=[endpoint_handler])
-        
+
         pre_routes = list(app.routes)
         pre_ware = list(app.user_middleware)
         pre_exc = dict(app.exception_handlers)
@@ -171,9 +174,9 @@ class TestFastAPIHelpers:
         assert pre_routes == post_routes
         assert pre_ware == post_ware
         assert pre_exc == post_exc
-        
-    def test_endpoint_registration_atomicity_on_tide_api_failure(self):
-        endpoint_handler = {   
+
+    def test_endpoint_registration_atomicity_on_tide_api_failure(self) -> None:
+        endpoint_handler = {
             'path':'/',
             'endpoint': lambda: {'result': 'example'},
             'methods': ['GET']
@@ -185,5 +188,3 @@ class TestFastAPIHelpers:
         post_routes_len = len(app.routes)
 
         assert pre_routes_len == post_routes_len
-
-    

@@ -12,7 +12,7 @@ from tideapi_core.exceptions import (
 
 def validate_bundle_name(bundle_name: str) -> str:
     '''Validate a bundle_name string'''
-    prohibited = ['/', '\\']    
+    prohibited = ['/', '\\']
 
     if not bundle_name.endswith(".json") or any(p in bundle_name for p in prohibited):
         raise DataValidationError(f"Invalid bundle name {bundle_name}")
@@ -95,11 +95,8 @@ def list_traces(TRACES: dict[str, Trace]) -> list[str]:
 def get_trace(TRACES: dict[str, Trace], bundle_name: str) -> Trace:
     '''Retrieve a loaded TIDE Trace via its associated bundle_name'''
     if not isinstance(bundle_name, str):
-        raise DataValidationError(f"Invalid bundle_name type: {type(bundle_name)}") 
+        raise DataValidationError(f"Invalid bundle_name type: {type(bundle_name)}")
     trace = TRACES.get(bundle_name)
     if trace is None:
         raise APILookupError(f"Unknown trace: {bundle_name}")
     return trace
-
-
-

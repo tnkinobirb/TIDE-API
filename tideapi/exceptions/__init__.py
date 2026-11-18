@@ -1,5 +1,5 @@
 '''
-    TIDE-API Exceptions 
+    TIDE-API Exceptions
 '''
 
 from tideapi_core.exceptions import (

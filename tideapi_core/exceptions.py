@@ -5,7 +5,7 @@ class TIDEAPIException(Exception):
     '''Base class for TIDE-API Exceptions'''
     def __init__(self, *args: object) -> None:
         super().__init__(*args)
-        
+
     def __repr__(self) -> str:
         return type(self).__name__
 
@@ -17,7 +17,7 @@ class APIStoreLookupError(TIDEAPIException):
     '''Use when TIDEAPIStore look up fails'''
 
 class TraceLookupError(TIDEAPIException):
-    '''Use when a TIDE query succeeds but the requested object does not exist'''    
+    '''Use when a TIDE query succeeds but the requested object does not exist'''
     pass
 
 class InternalExceptionError(TIDEAPIException):
@@ -35,4 +35,3 @@ class AlreadyRegisteredError(TIDEAPIException):
 class InvalidAPIStoreConfigurationError(TIDEAPIException):
     '''Use when a TIDEAPI Store fails to configure or its configuration is invalid'''
     pass
-

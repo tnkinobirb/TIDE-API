@@ -30,4 +30,3 @@ from tideapi_core.exception_handlers import (
     handle_data_validation_exception,
     handle_already_registered_exception
 )
-
