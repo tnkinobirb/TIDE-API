@@ -1,17 +1,15 @@
 '''
     FASTAPI ENDPOINT AND MIDDLEWARE HANDLERS
 '''
-
 import json
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from fastapi import Request, status
-from fastapi.responses import RedirectResponse, Response
-from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import RedirectResponse
 
 from tide_tooling import TIDE
-from tideapi_core.config import BUNDLE_DIR, INCLUDE_BUNDLE_DIR_AT_INIT
+from tideapi_core.config import BUNDLE_DIR, INCLUDE_BUNDLE_DIR_WHEN_LOADING
 from tideapi_core.helpers.native import validate_tide_bundle
 from tideapi_core.persistence.tideapi_store import TIDEAPIStore
 from tideapi_core.locks import (
@@ -53,14 +51,14 @@ def redirect_to_docs() -> RedirectResponse:
 
 # REGISTER
 def persist_bundle(bundle_name:str, replace:bool=False) -> dict[str, str]:
-    '''Persist a bundle from the `TIDE-API/bundles` dir into TIDEAPIStore's sqlite3 `bundles.db`'''
+    '''Persist a bundle from the `BUNDLE_DIR` dir into TIDEAPIStore's sqlite3 `bundles.db`'''
     validate_bundle_name(bundle_name)
     path = BUNDLE_DIR / Path(bundle_name)
     if path.parent != BUNDLE_DIR:
         raise DataValidationError("bundle_name escaped root path!")
 
     if not path.exists():
-        raise APILookupError(f"Cannot find path {bundle_name} in TIDE-API/bundles/")
+        raise APILookupError(f"Cannot find bundle {bundle_name} in BUNDLE_DIR")
 
     bundle = validate_tide_bundle(path)
 
@@ -69,11 +67,19 @@ def persist_bundle(bundle_name:str, replace:bool=False) -> dict[str, str]:
     return {'result': bundle_name}
 
 def load_trace(bundle_name: str) -> dict[str, str]:
-    '''Load a live trace object via a persisted TIDE bundle from TIDEAPIStore's sqlite3 `bundles.db`'''
+    '''
+    Load a live Trace object from a TIDE bundle.
+        If a Trace is already loaded, return the existing Trace.
+        If a requested bundle is not persisted, attempt to locate and persist the bundle from `BUNDLE_DIR`.
+            - Disable this behaviour by setting environment variable `TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING` to `false`.
+        If a bundle is persisted, load and register the Trace.
+        Otherwise, raise a LookupError
+    '''
     if isinstance(bundle_name, str):
         validate_bundle_name(bundle_name)
         with REGISTER_LOCK:
-            if not init_store().exists(bundle_name):
+            
+            if not init_store().exists(bundle_name) and INCLUDE_BUNDLE_DIR_WHEN_LOADING:
                 persist_bundle(bundle_name)
  
             bundle = json.loads(init_store().get(bundle_name))
@@ -90,7 +96,7 @@ def load_trace(bundle_name: str) -> dict[str, str]:
     
 # SHOW | LIST 
 def local_bundles() -> dict[str, list[str]]:
-    '''List local bundle .json files available within TIDE-API/bundles'''
+    '''List local bundle .json files available within `BUNDLE_DIR`'''
     valid = []
     for file in list(BUNDLE_DIR.iterdir()):
         try:
@@ -161,6 +167,7 @@ def trace_to_dict(bundle_name: str) -> dict[str, Any]:
     return {'result': trace.to_dict(serialise_events=True)}
 
 def initialise_traces(ignore_invalid: bool = False):
+    '''Endpoint wrapper for `initialise_traces_from_bundles`'''
     registered, failed = initialise_traces_from_bundles(
         ignore_invalid=ignore_invalid
     )
@@ -180,10 +187,26 @@ def initialise_traces_from_bundles(ignore_invalid:bool=False) -> tuple[list[str]
     Use ignore_invalid=False to raise an exception on bundle load failure.
     Use ignore_invalid=True to record failed bundle_names on load failure.
 
-    This function uses 'INCLUDE_BUNDLE_DIR_AT_INIT' from config.py.
+    This function uses 'INCLUDE_BUNDLE_DIR_WHEN_LOADING' from config.py,
+    configured via 'TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING'.
         - When set to 'false': load bundles stored only within TIDE-API's `bundles.db` 
-        - When set to 'true': additionally load valid bundle.json files from `TIDE-API/bundle` dir
+        - When set to 'true': additionally load valid bundle.json files from `BUNDLE_DIR`
 
+    ENV CONFIGURATION:
+        How to set an environment variable (temporarily):
+            Windows (Powershell):
+                $Env:VAR='value'
+                e.g:
+                    $Env:TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING='false'
+            Linux:
+                export VAR='value'
+                e.g:
+                    export TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING='false'           
+        
+        CONFIGS:
+            TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING: 'true'|'false'
+                - 'true': Include local bundle .json files when loading traces
+                - 'false': Only load bundles .json strings persisted within `bundles.db`
     '''    
     invalid = []
     registered = []
@@ -191,7 +214,7 @@ def initialise_traces_from_bundles(ignore_invalid:bool=False) -> tuple[list[str]
         persisted_bundle_names = persisted_bundles()['result'] 
         to_register = list(persisted_bundle_names)
         local_bundles = []
-        if INCLUDE_BUNDLE_DIR_AT_INIT:
+        if INCLUDE_BUNDLE_DIR_WHEN_LOADING:
             for path in BUNDLE_DIR.glob('*.json'):
                 if path.is_file() and path.name not in persisted_bundle_names: 
                     local_bundles.append(path.name)
@@ -217,7 +240,7 @@ def initialise_traces_from_bundles(ignore_invalid:bool=False) -> tuple[list[str]
                         f"Trace init from {bundle_name} failed due to a {type(e).__name__}({str(e)}) \n" \
                         "Use `initialise_traces_from_bundles(ignore_invalid=True)` to log instead of raising \n" \
                         f"Unloaded successful bundles registered before exception: {list(to_rollback)}.\n"
-                        ) from e
+                    ) from e
                 invalid.append(bundle_name)
                 continue
     
@@ -250,7 +273,7 @@ ENDPOINT_HANDLERS = [
 
     {"methods": ["POST"],"endpoint": load_trace,                        "path": "/register/trace/{bundle_name}"},
     {"methods": ["POST"],"endpoint": persist_bundle,                    "path": "/register/bundle/{bundle_name}"},
-    {"methods": ["POST"],"endpoint": initialise_traces,        "path": "/dev/initialise_traces"},
+    {"methods": ["POST"],"endpoint": initialise_traces,                 "path": "/initialise_traces"},
     
 ]
 

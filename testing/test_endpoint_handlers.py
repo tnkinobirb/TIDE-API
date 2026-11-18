@@ -272,6 +272,7 @@ class TestStoreHelpers:
             replace=[('bundle_name', 'example.json')], 
             params={'replace': False}
         )
+        assert store.get('example.json') == tide_bundle
         
         # Unknown bundle
         endpoint_tester(
@@ -704,7 +705,7 @@ class TestAPIHelperEndpoints:
             endpoints,
             methods=['POST'],
             function=request_handlers.initialise_traces,
-            path='/dev/initialise_traces',
+            path='/initialise_traces',
             execute=False
         )
 
@@ -730,7 +731,7 @@ class TestAPIHelperEndpoints:
                 m.setattr(request_handlers, 'TRACES', {})
                 m.setattr(request_handlers, 'STORE', TIDEAPIStore(tmp_dir() / 'bundles.db'))
                 m.setattr(request_handlers, 'BUNDLE_DIR', tmp_dir())
-                m.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_AT_INIT', True)
+                m.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_WHEN_LOADING', True)
 
                 endpoint_tester(
                     method='POST',
@@ -755,7 +756,7 @@ class TestAPIHelperEndpoints:
                 (dir_to_ignore / 'path_invalid.json').write_text('{}')
 
                 m.setattr(request_handlers, 'BUNDLE_DIR', dir_to_ignore)
-                m.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_AT_INIT', False)
+                m.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_WHEN_LOADING', False)
 
                 store.set('example.json', tide_bundle)
 
@@ -783,7 +784,7 @@ class TestAPIHelperEndpoints:
                 (test_dir / 'path_invalid.json').write_text('{}')
 
                 m.setattr(request_handlers, 'BUNDLE_DIR', test_dir)
-                m.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_AT_INIT', True)
+                m.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_WHEN_LOADING', True)
 
                 store.set('store_invalid.json', '1234')
                 pre_state = dict(request_handlers.TRACES)
@@ -823,7 +824,7 @@ class TestAPIHelperEndpoints:
                 store = TIDEAPIStore(tmp_dir() / 'bundles.db')
                 m.setattr(request_handlers, 'STORE', store)
                 m.setattr(request_handlers, 'BUNDLE_DIR', tmp_dir())
-                m.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_AT_INIT', False)
+                m.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_WHEN_LOADING', False)
 
                 store.set('a_valid.json', tide_bundle)
                 store.set('z_invalid.json', '1234')

@@ -28,7 +28,7 @@ class TestLifespan:
 
     def init_lifespan(self, monkeypatch: pytest.MonkeyPatch, dir: Path, include_dir:bool=False):
         monkeypatch.setattr(request_handlers, 'BUNDLE_DIR', dir)
-        monkeypatch.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_AT_INIT', include_dir)
+        monkeypatch.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_WHEN_LOADING', include_dir)
 
         app = initialise_fastapi_app(lifespan=lifespan)
         client = TestClient(app)
@@ -95,7 +95,7 @@ class TestLifespan:
             (local_dir / 'fail.json').write_text(tide_bundle)
 
             m.setattr(request_handlers, 'BUNDLE_DIR', local_dir)
-            m.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_AT_INIT', True)
+            m.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_WHEN_LOADING', True)
 
             original_load = request_handlers.load_trace
             loaded = []

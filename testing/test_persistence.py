@@ -149,7 +149,12 @@ class TestClassOperations:
         
         # duplicate registration  
         with pytest.raises(AlreadyRegisteredError):
+            apistore.set("example.json", "1234")
+        assert apistore.get("example.json") == "1234"
+
+        with pytest.raises(AlreadyRegisteredError):
             apistore.set("example.json", "0")
+        assert apistore.get("example.json") == "1234"
         
         rows = list(conn.execute("SELECT * FROM bundles")) 
         assert len(rows) == 1 

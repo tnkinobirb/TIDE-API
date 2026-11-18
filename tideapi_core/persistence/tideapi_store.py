@@ -13,7 +13,7 @@ import sqlite3
 from pathlib import Path
 from threading import RLock
 from contextlib import contextmanager
-from collections.abc import Iterator
+from collections.abc import Generator
 from tideapi_core.config import DB_PATH as DEFAULT_DB_PATH
 from tideapi_core.exceptions import (
     APIStoreLookupError,
@@ -23,7 +23,17 @@ from tideapi_core.exceptions import (
 )
 
 class TIDEAPIStore:
-    '''TIDE-API PERSISTENCE INTERFACE'''
+    '''
+    TIDE-API PERSISTENCE INTERFACE
+        Initialises or connects to a TIDEAPIStore sqlite3 `bundles.db` database.
+        Provides CRUD operations over persisted TIDE objects supported by TIDE-API. 
+
+        SUPPORTED TIDE OBJECTS: 
+            - BUNDLE (as JSON string)
+
+        TIDEAPIStore's default database path may be configured
+    '''
+
     DB_PATH = DEFAULT_DB_PATH
     def __init__(self, db_path: Path | None = None) -> None:
         '''Initialise sqlite3 database and associated lock'''
@@ -36,7 +46,7 @@ class TIDEAPIStore:
         conn = sqlite3.connect(self.DB_PATH)
         return conn
 
-    @staticmethod
+    @staticmethod 
     def get_cursor(conn: sqlite3.Connection) -> sqlite3.Cursor:
         '''Retrieve sqlite3 database cursor'''
         if not isinstance(conn, sqlite3.Connection):
@@ -45,7 +55,8 @@ class TIDEAPIStore:
 
     @property
     @contextmanager
-    def apistore(self) -> Iterator[sqlite3.Connection]:
+    def apistore(self) -> Generator[sqlite3.Connection, None, None]:
+        '''Context manager for handling and closing database connections'''
         conn = self.connect_to_bundle_db()
 
         try:
@@ -83,9 +94,8 @@ class TIDEAPIStore:
                         f"e = {type(e).__name__} {str(e)}. \n" 
                     )
 
-
     def set(self, bundle_name: str, bundle: str, replace:bool=False) -> None:
-        '''Persist a json.dumps(bundle.json) string as a bundle keyed via bundle_name'''
+        '''Persist a .json string as a bundle keyed via bundle_name'''
         if not isinstance(replace, bool):
             raise DataValidationError("Store.set(replace=...) must be a bool!")
 

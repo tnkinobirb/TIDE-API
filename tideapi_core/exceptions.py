@@ -1,8 +1,8 @@
 '''
     TIDE-API CUSTOM EXCEPTIONS
 '''
-
 class TIDEAPIException(Exception):
+    '''Base class for TIDE-API Exceptions'''
     def __init__(self, *args: object) -> None:
         super().__init__(*args)
         
@@ -29,7 +29,7 @@ class DataValidationError(TIDEAPIException):
     pass
 
 class AlreadyRegisteredError(TIDEAPIException):
-    '''Use when a FastAPI already exists on registration of it'''
+    '''Use when an item already exists upon registration of it'''
     pass
 
 class InvalidAPIStoreConfigurationError(TIDEAPIException):

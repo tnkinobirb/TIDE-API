@@ -1,7 +1,6 @@
 '''
-    NATIVE-PYTHON TIDE-API HELPERS
+    NATIVE TIDE-ECOSYSTEM HELPERS
 '''
-
 import json
 from pathlib import Path
 

@@ -1,7 +1,6 @@
 '''
     FAST-API CENTRIC HELPERS FOR TIDE-API FUNCTIONALITY 
 '''
-
 from typing import Any
 from fastapi import FastAPI
 from tideapi.exceptions import AlreadyRegisteredError
