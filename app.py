@@ -20,12 +20,12 @@ To setup a TIDE-API instance:
         Then:
             git clone https://github.com/tnkinobirb/TIDE-Tooling
             python -m pip install TIDE-Tooling/. fastapi[standard]
-            fastapi TIDE-API/app.py
+            fastapi run TIDE-API/app.py
 
-        Open a browser at https://127.0.0.1:8000/docs and enjoy!
+        Open a browser at http://127.0.0.1:8000/docs and enjoy!
 
     By default, local .json bundles within the `BUNDLE_DIR` directory will be detected, loaded and persisted.
-    To disable this behaviour, set the environment variable `INCLUDE_BUNDLE_DIR_WHEN_LOADING` to 'false'.
+    To disable this behaviour, set the environment variable `TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING` to 'false'.
 
     ENV CONFIGURATION:
         Adjust environment variables to change directory locations or desired behaviour.
@@ -34,24 +34,23 @@ To setup a TIDE-API instance:
             Windows (Powershell):
                 $Env:VAR='value'
                 e.g:
-                    $Env:INCLUDE_BUNDLE_DIR_WHEN_LOADING='false'
+                    $Env:TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING='false'
             Linux:
                 export VAR='value'
                 e.g:
-                    export INCLUDE_BUNDLE_DIR_WHEN_LOADING='false'           
+                    export TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING='false'           
         
         PATHS:
-            DB_PATH: Where TIDEAPIStore's database should be created, or is located. 
-            BUNDLE_DIR: The directory in which local bundle .json files are discovered.  
+            TIDEAPI_DATABASE_PATH: Where TIDEAPIStore's database should be created, or is located. 
+            TIDEAPI_BUNDLE_DIR: The directory in which local bundle .json files are discovered.  
         
         BEHAVIOUR CONFIGS:
-            INCLUDE_BUNDLE_DIR_WHEN_LOADING: 'true'|'false'
+            TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING: 'true'|'false'
                 - 'true': Include local bundle .json files when loading traces
                 - 'false': Only load bundles .json strings persisted within `bundles.db`
 '''    
 
-from tideapi_core.lifespan import lifespan 
-from tideapi.helpers.fastapi import initialise_fastapi_app
+from tideapi.fastapi import initialise_fastapi_app, lifespan
 from tideapi.handlers import (
     ENDPOINT_HANDLERS,
     EXCEPTION_HANDLERS,

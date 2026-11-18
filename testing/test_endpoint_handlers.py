@@ -13,7 +13,7 @@ import tideapi_core.request_handlers as request_handlers
 from tide_tooling import Trace, TIDE
 from tideapi.handlers import EXCEPTION_HANDLERS
 from tideapi.persistence import TIDEAPIStore
-from tideapi.helpers.fastapi import initialise_fastapi_app
+from tideapi.fastapi import initialise_fastapi_app
 from tideapi.handlers import (
     init_store,
     trace_to_dict,

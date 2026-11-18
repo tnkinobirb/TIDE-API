@@ -1,3 +1,7 @@
+'''
+    TIDE-API REQUEST HANDLERS
+'''
+
 from tideapi_core.request_handlers import (
     load_trace,
     init_store,

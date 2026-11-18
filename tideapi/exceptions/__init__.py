@@ -1,6 +1,11 @@
+'''
+    TIDE-API Exceptions 
+'''
+
 from tideapi_core.exceptions import (
-    TraceLookupError,
+    TIDEAPIException,
     APILookupError,
+    TraceLookupError,
     APIStoreLookupError,
     DataValidationError,
     InternalExceptionError,

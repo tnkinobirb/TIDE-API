@@ -2,7 +2,7 @@ import pytest
 from tideapi.handlers import EXCEPTION_HANDLERS
 from fastapi.responses import Response
 from fastapi.testclient import TestClient
-from tideapi.helpers.fastapi import initialise_fastapi_app
+from tideapi.fastapi import initialise_fastapi_app
 from tideapi.exceptions import (
     APILookupError, 
     TraceLookupError, 

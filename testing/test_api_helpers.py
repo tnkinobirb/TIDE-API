@@ -2,13 +2,13 @@ import pytest
 import fastapi
 import fastapi.testclient
 
-from tideapi.helpers.native import (
+from tideapi_core.helpers.native import (
     list_traces,
     validate_bundle_name,
     get_trace,
 )
 
-from tideapi.helpers.fastapi import (
+from tideapi.fastapi import (
     initialise_fastapi_app,
     register_endpoint_handlers,
     register_middleware_handlers,

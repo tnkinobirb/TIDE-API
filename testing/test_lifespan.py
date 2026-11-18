@@ -5,8 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from tideapi.exceptions import DataValidationError
 from tideapi.persistence import TIDEAPIStore
-from tideapi_core.lifespan import lifespan
-from tideapi.helpers.fastapi import initialise_fastapi_app 
+from tideapi.fastapi import initialise_fastapi_app, lifespan
 
 class TestLifespan:
 
