@@ -1,59 +1,85 @@
-.DS_Store
-.huskyrc.json
-out
-log.log
-**/node_modules
-*.pyc
-*.vsix
-envVars.txt
-**/.vscode/.ropeproject/**
-**/testFiles/**/.cache/**
-*.noseids
-.nyc_output
-.vscode-test
-__pycache__
-npm-debug.log
-**/.mypy_cache/**
-!yarn.lock
+# ==========================================
+# TIDE-API .gitignore
+# ==========================================
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+.venv*/
+venv/
+env/
+ENV/
+
+# Environment variables and local secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Python tooling and test caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.tox/
+.nox/
+.hypothesis/
+.ipynb_checkpoints/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
 coverage/
-cucumber-report.json
-**/.vscode-test/**
-**/.vscode test/**
-**/.vscode-smoke/**
-**/.venv*/
-port.txt
-precommit.hook
-python_files/lib/**
-debug_coverage*/**
-languageServer/**
-languageServer.*/**
-bin/**
-obj/**
-.pytest_cache
-tmp/**
-.python-version
-.vs/
+coverage.xml
+*.cover
+*.py,cover
 test-results*.xml
-xunit-test-results.xml
-build/ci/performance/performance-results.json
-!build/
-debug*.log
-debugpy*.log
-pydevd*.log
-nodeLanguageServer/**
-nodeLanguageServer.*/**
-dist/**
-# translation files
-*.xlf
-package.nls.*.json
-l10n/
-python-env-tools/**
-# coverage files produced as test output
-python_files/tests/*/.data/.coverage*
-python_files/tests/*/.data/*/.coverage*
-src/testTestingRootWkspc/coverageWorkspace/.coverage
 
-# ignore ai artifacts generated and placed in this folder
-ai-artifacts/*
+# Build and packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
 
+# SQLite databases and associated files
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Local runtime bundles
+# Keep example bundles and documentation
+/bundles/*
+!/bundles/example.json
+!/bundles/.gitkeep
+!/bundles/README.md
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*~
+
+# Editor and IDE files
+.vscode/
+.idea/
+.vs/
+*.swp
+*.swo
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
