@@ -125,7 +125,6 @@ def get_init_meta(request: Request) -> dict[str, Any]:
         "result": getattr(request.app.state, "init", {})
     }
 
-
 # INVESTIGATE / DEFAULT LOOKUP BEHAVIOUR
 def investigate_ref(bundle_name: str, ref: str) -> dict[str, Any]:
     '''Investigate a live Trace `reference` via `Trace.investigate()`'''
@@ -161,57 +160,73 @@ def trace_to_dict(bundle_name: str) -> dict[str, Any]:
     trace = get_trace(TRACES, bundle_name)
     return {'result': trace.to_dict(serialise_events=True)}
 
+def initialise_traces(ignore_invalid: bool = False):
+    registered, failed = initialise_traces_from_bundles(
+        ignore_invalid=ignore_invalid
+    )
+
+    return {
+        "result": {
+            "registered": registered,
+            "failed": failed
+        }
+    }
+
 def initialise_traces_from_bundles(ignore_invalid:bool=False) -> tuple[list[str], list[str]]:
-    '''
+    '''    
     Initialise live Trace objects from TIDEAPIStore sqlite3 `bundles.db`.
-    If already initialised, skip instead. 
-    If bundle_failed to register, log its validation error.
+    If a bundle already exists within TRACES (bundle is initialised), skip. 
+    
+    Use ignore_invalid=False to raise an exception on bundle load failure.
+    Use ignore_invalid=True to record failed bundle_names on load failure.
+
+    This function uses 'INCLUDE_BUNDLE_DIR_AT_INIT' from config.py.
+        - When set to 'false': load bundles stored only within TIDE-API's `bundles.db` 
+        - When set to 'true': additionally load valid bundle.json files from `TIDE-API/bundle` dir
+
     '''    
     invalid = []
-    registered= []
-    bundles = persisted_bundles()['result'] 
-    if INCLUDE_BUNDLE_DIR_AT_INIT:
-        for path in BUNDLE_DIR.glob('*.json'):
-            if path.is_file() and path.name not in bundles: 
-                bundles.append(path.name)   
-    
-    for bundle_name in bundles:
-        if bundle_name in TRACES:
-            # `*` signifies a previously registered bundle
-            registered.append("*" + bundle_name)
-            continue
-        try:
-            load_trace(bundle_name)
-            registered.append(bundle_name)
-        except Exception as e:
-            if not ignore_invalid:
-                raise DataValidationError(
-                    f"Trace init from {bundle_name} failed due to a {type(e).__name__}({str(e)}) \n" \
-                    "Use `initialise_traces_from_bundles(ignore_invalid=True)` to log instead of raising") from e
-            invalid.append(bundle_name)
-            continue
+    registered = []
+    with REGISTER_LOCK:
+        persisted_bundle_names = persisted_bundles()['result'] 
+        to_register = list(persisted_bundle_names)
+        local_bundles = []
+        if INCLUDE_BUNDLE_DIR_AT_INIT:
+            for path in BUNDLE_DIR.glob('*.json'):
+                if path.is_file() and path.name not in persisted_bundle_names: 
+                    local_bundles.append(path.name)
+                    to_register.append(path.name)   
         
+        for bundle_name in to_register:
+            if bundle_name in TRACES:
+                # `*` signifies a previously registered bundle
+                registered.append("*" + bundle_name)
+                continue
+            try:
+                load_trace(bundle_name)
+                registered.append(bundle_name)
+            except Exception as e:
+                if not ignore_invalid:
+                    to_rollback = [name for name in registered if not name.startswith('*')]
+                    for name in to_rollback:
+                        if name in local_bundles and name not in persisted_bundle_names:
+                            init_store().pop(name)
+                        del TRACES[name]
+
+                    raise DataValidationError(
+                        f"Trace init from {bundle_name} failed due to a {type(e).__name__}({str(e)}) \n" \
+                        "Use `initialise_traces_from_bundles(ignore_invalid=True)` to log instead of raising \n" \
+                        f"Unloaded successful bundles registered before exception: {list(to_rollback)}.\n"
+                        ) from e
+                invalid.append(bundle_name)
+                continue
+    
     succeeded = list(registered)
     failed = list(invalid)
     return succeeded, failed
 
 # MIDDLEWARE 
-
-# DEPRECATED - replaced by `tideapi_core.lifespan` 
-async def initialise_traces(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
-    '''Middleware function for initialising traces on load'''
-    if not hasattr(request.app.state, 'init'):
-        request.app.state.init = {}
-    
-    if request.url.path == "/docs":
-        registered, failed = await run_in_threadpool(initialise_traces_from_bundles, ignore_invalid=True) 
-
-        request.app.state.init['traces'] = {
-            "failed": failed,
-            "registered": registered
-        } 
-    
-    return await call_next(request)
+# NONE
 
 # DICTIONARIES FOR ENDPOINT REGISTRATION 
 MIDDLEWARE_HANDLERS = []
@@ -235,7 +250,7 @@ ENDPOINT_HANDLERS = [
 
     {"methods": ["POST"],"endpoint": load_trace,                        "path": "/register/trace/{bundle_name}"},
     {"methods": ["POST"],"endpoint": persist_bundle,                    "path": "/register/bundle/{bundle_name}"},
-    {"methods": ["POST"],"endpoint": initialise_traces_from_bundles,    "path": "/dev/initialise_traces"},
+    {"methods": ["POST"],"endpoint": initialise_traces,        "path": "/dev/initialise_traces"},
     
 ]
 

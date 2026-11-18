@@ -689,9 +689,171 @@ class TestAPIHelperEndpoints:
 
         client.app.state.init = [213123231]
         test_endpoint_with_client(client, list(client.app.state.init))
-        
-        
-        
-        
-        
-        
+
+    
+    def test_initialise_traces(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        endpoints: dict[str, dict[str, Any]],
+        tmp_path_factory: pytest.TempPathFactory,
+        tide_bundle: str,
+        sample_trace: Trace,
+    ) -> None:
+
+        endpoint, _ = assert_endpoint_configuration(
+            endpoints,
+            methods=['POST'],
+            function=request_handlers.initialise_traces,
+            path='/dev/initialise_traces',
+            execute=False
+        )
+
+        app = initialise_fastapi_app(
+            ENDPOINT_HANDLERS=[endpoint],
+            EXCEPTION_HANDLERS=EXCEPTION_HANDLERS
+        )
+
+        tmp_dir = lambda: tmp_path_factory.mktemp('tmp')
+
+        def expected(registered=None, failed=None):
+            return {
+                'result': {
+                    'registered': registered,
+                    'failed': failed
+                }
+            }
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+
+            # TEST EMPTY STORE AND PATH
+            with monkeypatch.context() as m:
+                m.setattr(request_handlers, 'TRACES', {})
+                m.setattr(request_handlers, 'STORE', TIDEAPIStore(tmp_dir() / 'bundles.db'))
+                m.setattr(request_handlers, 'BUNDLE_DIR', tmp_dir())
+                m.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_AT_INIT', True)
+
+                endpoint_tester(
+                    method='POST',
+                    endpoint=endpoint,
+                    status_code=200,
+                    expected_result=expected([], []),
+                    use_client=client,
+                    params={'ignore_invalid': True}
+                )
+
+                assert not request_handlers.TRACES
+                assert not request_handlers.STORE.bundles()
+
+            # TEST VALID BUNDLE FROM STORE ONLY
+            with monkeypatch.context() as m:
+                m.setattr(request_handlers, 'TRACES', {})
+
+                store = TIDEAPIStore(tmp_dir() / 'bundles.db')
+                m.setattr(request_handlers, 'STORE', store)
+
+                dir_to_ignore = tmp_dir()
+                (dir_to_ignore / 'path_invalid.json').write_text('{}')
+
+                m.setattr(request_handlers, 'BUNDLE_DIR', dir_to_ignore)
+                m.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_AT_INIT', False)
+
+                store.set('example.json', tide_bundle)
+
+                endpoint_tester(
+                    method='POST',
+                    endpoint=endpoint,
+                    status_code=200,
+                    expected_result=expected(['example.json'], []),
+                    use_client=client,
+                    params={'ignore_invalid': True}
+                )
+
+                assert list(request_handlers.TRACES) == ['example.json']
+                assert store.bundles() == ['example.json']
+
+            # TEST ALREADY REGISTERED PLUS INVALID STORE AND DIR
+            with monkeypatch.context() as m:
+                m.setattr(request_handlers, 'TRACES', {'example.json': sample_trace})
+
+                store = TIDEAPIStore(tmp_dir() / 'bundles.db')
+                m.setattr(request_handlers, 'STORE', store)
+
+                test_dir = tmp_dir()
+                (test_dir / 'example.json').write_text(tide_bundle)
+                (test_dir / 'path_invalid.json').write_text('{}')
+
+                m.setattr(request_handlers, 'BUNDLE_DIR', test_dir)
+                m.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_AT_INIT', True)
+
+                store.set('store_invalid.json', '1234')
+                pre_state = dict(request_handlers.TRACES)
+
+                # TEST INVALID WITH ignore_invalid=False
+                _, response = endpoint_tester(
+                    method='POST',
+                    endpoint=endpoint,
+                    status_code=400,
+                    compare_result=False,
+                    use_client=client,
+                    params={'ignore_invalid': False}
+                )
+
+                assert response.json()['result']['error'] == 'DataValidationError'
+                assert request_handlers.TRACES == pre_state
+
+                # TEST INVALID WITH ignore_invalid=True
+                endpoint_tester(
+                    method='POST',
+                    endpoint=endpoint,
+                    status_code=200,
+                    expected_result=expected(
+                        ['*example.json'],
+                        ['store_invalid.json', 'path_invalid.json']
+                    ),
+                    use_client=client,
+                    params={'ignore_invalid': True}
+                )
+
+                assert request_handlers.TRACES == pre_state
+
+            # TEST ROLLBACK OF NEW REGISTRATIONS
+            with monkeypatch.context() as m:
+                m.setattr(request_handlers, 'TRACES', {})
+
+                store = TIDEAPIStore(tmp_dir() / 'bundles.db')
+                m.setattr(request_handlers, 'STORE', store)
+                m.setattr(request_handlers, 'BUNDLE_DIR', tmp_dir())
+                m.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_AT_INIT', False)
+
+                store.set('a_valid.json', tide_bundle)
+                store.set('z_invalid.json', '1234')
+
+                # Force valid-before-invalid ordering to exercise rollback
+                m.setattr(
+                    request_handlers,
+                    'persisted_bundles',
+                    lambda: {'result': ['a_valid.json', 'z_invalid.json']}
+                )
+
+                _, response = endpoint_tester(
+                    method='POST',
+                    endpoint=endpoint,
+                    status_code=400,
+                    compare_result=False,
+                    use_client=client,
+                    params={'ignore_invalid': False}
+                )
+
+                assert response.json()['result']['error'] == 'DataValidationError'
+                assert not request_handlers.TRACES
+
+                # Previously persisted records must remain in SQLite
+                assert set(store.bundles()) == {
+                    'a_valid.json',
+                    'z_invalid.json'
+                }
+    
+            
+            
+            
+            

@@ -3,6 +3,7 @@ import tideapi_core.request_handlers as request_handlers
 
 from pathlib import Path
 from fastapi.testclient import TestClient
+from tideapi.exceptions import DataValidationError
 from tideapi.persistence import TIDEAPIStore
 from tideapi_core.lifespan import lifespan
 from tideapi.helpers.fastapi import initialise_fastapi_app 
@@ -72,6 +73,7 @@ class TestLifespan:
             m.setattr(request_handlers, 'TRACES', {'example.json': tide_bundle})
             m.setattr(request_handlers, 'STORE', TIDEAPIStore(tmp_dir() / 'bundles.db'))
             request_handlers.STORE.set('store_invalid.json', '1234')
+            
             dir = tmp_dir()
             valid_path = (dir / 'example.json')
             valid_path.write_text(tide_bundle)
@@ -80,6 +82,39 @@ class TestLifespan:
             
             with self.init_lifespan(m, dir, include_dir=True) as client:
                 assert client.app.state.init == self.expect_init_state_result(['*example.json'], ['store_invalid.json', 'path_invalid.json'])
-            invalid_path.unlink()
 
+        # TEST ROLLBACK OF LOCAL BUNDLES PERSISTED BEFORE FAILURE
+        with monkeypatch.context() as m:
+            m.setattr(request_handlers, 'TRACES', {})
 
+            store = TIDEAPIStore(tmp_dir() / 'bundles.db')
+            m.setattr(request_handlers, 'STORE', store)
+
+            local_dir = tmp_dir()
+            (local_dir / 'pass.json').write_text(tide_bundle)
+            (local_dir / 'fail.json').write_text(tide_bundle)
+
+            m.setattr(request_handlers, 'BUNDLE_DIR', local_dir)
+            m.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_AT_INIT', True)
+
+            original_load = request_handlers.load_trace
+            loaded = []
+
+            def fail_on_second(bundle_name):
+                if loaded:
+                    assert store.exists(loaded[0])
+                    assert loaded[0] in request_handlers.TRACES
+                    raise DataValidationError("Simulated failure")
+
+                result = original_load(bundle_name)
+                loaded.append(bundle_name)
+                return result
+
+            m.setattr(request_handlers, 'load_trace', fail_on_second)
+
+            with pytest.raises(DataValidationError):
+                request_handlers.initialise_traces_from_bundles(ignore_invalid=False)
+
+            assert len(loaded) == 1
+            assert not request_handlers.TRACES
+            assert not store.bundles()
