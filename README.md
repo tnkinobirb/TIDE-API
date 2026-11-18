@@ -79,7 +79,7 @@ curl http://127.0.0.1:8000/traces/example.json
 TIDE-API stores bundle JSON in a configurable SQLite `bundles.db` database.
 
 - Existing databases are validated before use.
-- Bundle persistence rejects duplicated by default; replacement must be explicitly enabled.
+- Bundle persistence rejects duplicates by default; replacement must be explicitly enabled.
 - Loaded traces are held in memory for the lifetime of the process.
 - Local bundle discovery is optional. When disabled, only persisted bundles are loaded.
 
@@ -136,5 +136,6 @@ $Env:TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING='false'
 ## Tests
 
 ```bash
+python -m pip install ".[test]"
 python -m pytest -q
 ```

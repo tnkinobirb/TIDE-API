@@ -6,7 +6,7 @@ All rights reserved.
 
 1. Purpose
 
-TIDE-Tooling is currently under active development. This license is
+TIDE-API is currently under active development. This license is
 intentionally restrictive while the project is being developed and evaluated.
 
 The Software is made publicly available so that individuals may inspect,
@@ -98,7 +98,7 @@ permissions expressly granted by this license.
 8. No Trademark Rights
 
 This license does not grant permission to use the names "TIDE",
-"TIDE-Tooling", "Ocean", or associated names, logos, or branding in a manner
+"TIDE-API", "Ocean", or associated names, logos, or branding in a manner
 that suggests endorsement, sponsorship, or affiliation.
 
 9. Future Licensing

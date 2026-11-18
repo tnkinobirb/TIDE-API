@@ -6,6 +6,7 @@ To setup a TIDE-API instance:
         mkdir tideapi_project
         cd tideapi_project
         git clone https://github.com/tnkinobirb/TIDE-API
+        cd TIDE-API
 
     Then enter the following commands:
 
@@ -18,9 +19,8 @@ To setup a TIDE-API instance:
                 . .venv/bin/activate
 
         Then:
-            git clone https://github.com/tnkinobirb/TIDE-Tooling
-            python -m pip install TIDE-Tooling/. fastapi[standard]
-            fastapi run TIDE-API/app.py
+            python -m pip install .
+            fastapi run app.py
 
         Open a browser at http://127.0.0.1:8000/docs and enjoy!
 

@@ -12,7 +12,7 @@ license-files = ["LICENCE.md"]
 
 dependencies = [
     "fastapi[standard]>=0.112.0",
-    "tide-tooling @ git+https://github.com/tnkinobirb/TIDE-Tooling.git@main",
+    "tide-tooling @ git+https://github.com/tnkinobirb/TIDE-Tooling.git@8c7edc17a50deb4bf312e113b726a3bcadbc1bc9",
 ]
 
 [project.optional-dependencies]
