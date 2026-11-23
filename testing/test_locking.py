@@ -14,16 +14,20 @@ from tideapi.persistence import TIDEAPIStore
 from tideapi_core.request_handlers import init_store
 
 class ObservableLock:
-    def __init__(self, original_lock: Lock | RLock, attempting: Event, acquired: Event, released_event: Event, continue_event: Event | None = None) -> None:
+    def __init__(self, original_lock: Lock | RLock, attempting: Event, acquired: Event, released_event: Event, continue_event: Event | None = None, contended: Event | None = None) -> None:
         self.original_lock = original_lock
         self.attempting = attempting
         self.acquired = acquired
         self.continue_event = continue_event
         self.released = released_event
+        self.contended = contended
 
     def __enter__(self) -> "ObservableLock":
         self.attempting.set()
-        self.original_lock.acquire()
+        if not self.original_lock.acquire(blocking=False):
+            if self.contended is not None:
+                self.contended.set()
+            self.original_lock.acquire()
         self.acquired.set()
 
         if self.continue_event is not None:
@@ -316,6 +320,7 @@ class TestFunctionLocks:
         b_attempting = Event()
         b_acquired = Event()
         b_released = Event()
+        b_contended = Event()
 
         monkeypatch.setattr(lock_owner, lock_attribute, ObservableLock(lock, a_attempting, a_acquired, a_released, allow_a_to_continue))
 
@@ -325,12 +330,13 @@ class TestFunctionLocks:
             assert a_attempting.wait(timeout=5)
             assert a_acquired.wait(timeout=5)
 
-            monkeypatch.setattr(lock_owner, lock_attribute, ObservableLock(lock, b_attempting, b_acquired, b_released))
+            monkeypatch.setattr(lock_owner, lock_attribute, ObservableLock(lock, b_attempting, b_acquired, b_released, contended=b_contended))
 
 
             b = threadpool.submit(func, *args, **kwargs)
 
             assert b_attempting.wait(timeout=5)
+            assert b_contended.wait(timeout=5)
 
             # assert `a` has acquired its lock
             assert a_acquired.is_set()
@@ -373,8 +379,9 @@ class TestFunctionLocks:
             else:
                 self.assert_empty_store_state(snap)
 
-    def test_persist_bundle_barrier(self, tide_bundle: str) -> None:
+    def test_persist_bundle_barrier(self, monkeypatch: pytest.MonkeyPatch, tide_bundle: str) -> None:
         self.assert_empty_state()
+        monkeypatch.setattr(request_handlers, "validate_tide_bundle", lambda path: tide_bundle)
         barrier = Barrier(2, timeout=5)
 
         empty_snap, store = self.helper_init_store()
@@ -410,6 +417,7 @@ class TestFunctionLocks:
         b_attempting = Event()
         b_acquired = Event()
         b_released = Event()
+        b_contended = Event()
 
         monkeypatch.setattr(store, "lock", ObservableLock(store_lock, a_attempting, a_acquired, a_released, allow_a_to_continue))
 
@@ -419,11 +427,12 @@ class TestFunctionLocks:
             assert a_attempting.wait(timeout=5)
             assert a_acquired.wait(timeout=5)
 
-            monkeypatch.setattr(store, "lock", ObservableLock(store_lock, b_attempting, b_acquired, b_released))
+            monkeypatch.setattr(store, "lock", ObservableLock(store_lock, b_attempting, b_acquired, b_released, contended=b_contended))
 
             b = threadpool.submit(persist_bundle, "example.json")
 
             assert b_attempting.wait(timeout=5)
+            assert b_contended.wait(timeout=5)
 
             # assert `a` has acquired its lock
             assert a_acquired.is_set()
