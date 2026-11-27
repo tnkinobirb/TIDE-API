@@ -1,4 +1,3 @@
-import json
 import pytest
 import sqlite3
 from pathlib import Path
@@ -125,7 +124,7 @@ class TestStoreInit:
 
 class TestClassOperations:
 
-    def test_store_set(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, tide_bundle: str) -> None:
+    def test_store_set(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, tide_bundle: str, modified_tide_bundle: str) -> None:
         db = init_test_apistore(monkeypatch, tmp_path)
 
         assert not db.bundles()
@@ -147,19 +146,30 @@ class TestClassOperations:
         assert db.get("example.json") == tide_bundle
 
         with pytest.raises(AlreadyRegisteredError):
-            db.set("example.json", tide_bundle)
+            db.set("example.json", modified_tide_bundle)
         assert db.get("example.json") == tide_bundle
+
+        # The database also rejects duplicate keys without store validation.
+        with pytest.raises(sqlite3.IntegrityError):
+            with db.apistore as conn:
+                conn.execute(
+                    "INSERT INTO bundles (bundle_name, bundle) VALUES (?, ?)",
+                    ("example.json", modified_tide_bundle)
+                )
 
         assert db.bundles() == ["example.json"]
         assert db.get("example.json") == tide_bundle
+
+        # Invalid replacement must preserve the original registration.
+        with pytest.raises(DataValidationError):
+            db.set("example.json", "1234", replace=True)
+        assert db.get("example.json") == tide_bundle
+        assert db.bundles() == ["example.json"]
 
         # replace existing registration
-        modified_tide_bundle = json.loads(tide_bundle)
-        modified_tide_bundle['manifest']['run']['trace']['name'] == 'new'
-        serialised_bundle = json.dumps(modified_tide_bundle)
-        db.set("example.json", serialised_bundle, replace=True)
+        db.set("example.json", modified_tide_bundle, replace=True)
         assert db.bundles() == ["example.json"]
-        assert db.get("example.json") == serialised_bundle
+        assert db.get("example.json") == modified_tide_bundle
 
     def test_store_get(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, tide_bundle: str) -> None:
         db = init_test_apistore(monkeypatch, tmp_path)

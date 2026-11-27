@@ -1,3 +1,4 @@
+import json
 import pytest
 from typing import Any
 from collections.abc import Awaitable, Callable
@@ -65,6 +66,15 @@ def tide_bundle() -> str:
     tide_bundle = bundles / 'example.json'
     assert tide_bundle.exists()
     return tide_bundle.read_text(encoding='utf-8')
+
+@pytest.fixture(scope='session')
+def modified_tide_bundle(tide_bundle: str) -> str:
+    modified = json.loads(tide_bundle)
+    modified['manifest']['run']['trace']['name'] = 'new'
+    serialised_bundle = json.dumps(modified)
+    assert modified != json.loads(tide_bundle)
+    assert serialised_bundle != tide_bundle
+    return serialised_bundle
 
 @pytest.fixture
 def sample_trace() -> Trace:

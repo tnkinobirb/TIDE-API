@@ -66,10 +66,17 @@ class TestLifespan:
                 assert client.app.state.init == self.expect_init_state_result(['example.json'], [])
 
 
-        # TEST ALREADY REGISTERED PLUS INVALID DIR
+        # TEST ALREADY REGISTERED PLUS INVALID FROM STORE AND DIR
         with monkeypatch.context() as m:
             m.setattr(request_handlers, 'TRACES', {'example.json': tide_bundle})
             m.setattr(request_handlers, 'STORE', TIDEAPIStore(tmp_dir() / 'bundles.db'))
+
+            # Bypass store validation to simulate an invalid persisted bundle.
+            with request_handlers.STORE.apistore as conn:
+                conn.execute(
+                    "INSERT INTO bundles (bundle_name, bundle) VALUES (?, ?)",
+                    ('store_invalid.json', '1234')
+                )
 
             tmp_path = tmp_dir()
             valid_path = (tmp_path / 'example.json')
@@ -78,7 +85,7 @@ class TestLifespan:
             invalid_path.write_text('{}')
 
             with self.init_lifespan(m, tmp_path, include_dir=True) as client:
-                assert client.app.state.init == self.expect_init_state_result(['*example.json'], ['path_invalid.json'])
+                assert client.app.state.init == self.expect_init_state_result(['*example.json'], ['store_invalid.json', 'path_invalid.json'])
 
         # TEST ROLLBACK OF LOCAL BUNDLES PERSISTED BEFORE FAILURE
         with monkeypatch.context() as m:

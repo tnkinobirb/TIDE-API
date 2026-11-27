@@ -568,6 +568,19 @@ class TestAPIHelperEndpoints:
 
             assert_empty_context()
 
+            # Bypass store validation to simulate an invalid persisted bundle.
+            with store.apistore as conn:
+                conn.execute(
+                    "INSERT INTO bundles (bundle_name, bundle) VALUES (?, ?)",
+                    ("example.json", '{"fake_bundle": "lol"}')
+                )
+            assert store.bundles() == ["example.json"]
+
+            with pytest.raises(TypeError):
+                load_trace("example.json")
+
+            assert_empty_context()
+
         with monkeypatch.context() as m:
             store = init_context(m, tmp_path_factory.mktemp("temp") / "bundles.db")
             store.set("example.json", tide_bundle)
@@ -757,7 +770,7 @@ class TestAPIHelperEndpoints:
                 assert list(request_handlers.TRACES) == ['example.json']
                 assert store.bundles() == ['example.json']
 
-            # TEST ALREADY REGISTERED PLUS INVALID DIR
+            # TEST ALREADY REGISTERED PLUS INVALID STORE AND DIR
             with monkeypatch.context() as m:
                 m.setattr(request_handlers, 'TRACES', {'example.json': sample_trace})
 
@@ -770,6 +783,13 @@ class TestAPIHelperEndpoints:
 
                 m.setattr(request_handlers, 'BUNDLE_DIR', test_dir)
                 m.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_WHEN_LOADING', True)
+
+                # Bypass store validation to simulate an invalid persisted bundle.
+                with store.apistore as conn:
+                    conn.execute(
+                        "INSERT INTO bundles (bundle_name, bundle) VALUES (?, ?)",
+                        ('store_invalid.json', '1234')
+                    )
 
                 pre_state = dict(request_handlers.TRACES)
 
@@ -793,7 +813,7 @@ class TestAPIHelperEndpoints:
                     status_code=200,
                     expected_result=expected(
                         ['*example.json'],
-                        ['path_invalid.json']
+                        ['store_invalid.json', 'path_invalid.json']
                     ),
                     use_client=client,
                     params={'ignore_invalid': True}
