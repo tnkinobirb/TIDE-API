@@ -21,7 +21,7 @@ BUNDLE_DIR = Path(
 
 # Point to a TIDEAPIStore initiated sqlite3-database instance
 DB_PATH = Path(
-    os.environ.get("TIDEAPI_DATABASE_PATH", TIDEAPI_DIR / "bundles.db")
+    os.environ.get("TIDEAPI_DATABASE_PATH", TIDEAPI_DIR / "data" /  "bundles.db")
 ).expanduser().resolve()
 
 # BEHAVIOUR TOGGLES

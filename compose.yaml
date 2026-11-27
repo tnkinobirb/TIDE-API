@@ -1,0 +1,11 @@
+services:
+  tide-api:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      TIDEAPI_BUNDLE_DIR: /app/bundles
+      TIDEAPI_DATABASE_PATH: /app/data/bundles.db
+    volumes:
+      - ./data/:/app/data
+      - ./bundles:/app/bundles:ro

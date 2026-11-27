@@ -60,6 +60,8 @@ pip-wheel-metadata/
 
 # Local runtime bundles
 # Keep example bundles and documentation
+/data/*
+!/data/.gitkeep
 /bundles/*
 !/bundles/example.json
 !/bundles/.gitkeep

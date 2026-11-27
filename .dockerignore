@@ -1,0 +1,17 @@
+.git
+.venv*
+__pycache__
+.pytest_cache
+*.pyc
+*.db
+*.db-*
+.env
+.env.*
+
+data/
+bundles/*
+!bundles/example.json
+
+build/
+dist/
+*.egg-info/

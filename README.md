@@ -12,9 +12,13 @@ This is intended to be used only as a local service for listing, loading and inv
 git clone https://github.com/tnkinobirb/TIDE-API.git
 cd TIDE-API
 
+# With venv
 python -m venv .venv
-```
 
+# With Docker:
+docker compose up --build
+
+```
 Activate the environment:
 
 ```bash
@@ -120,7 +124,7 @@ $Env:ENV_VAR='false'
 | Variable | Default | Behaviour |
 |---|---|---|
 | `TIDEAPI_BUNDLE_DIR` | `TIDE-API/bundles` | Directory containing local bundle files |
-| `TIDEAPI_DATABASE_PATH` | `TIDE-API/bundles.db` | Full path of the SQLite database |
+| `TIDEAPI_DATABASE_PATH` | `TIDE-API/data/bundles.db` | Full path of the SQLite database |
 | `TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING` | `true` | Include and persist local bundles while loading traces |
 
 For example:
