@@ -1,7 +1,7 @@
 '''
     LOCKS FOR TIDE-API METHODS
 '''
-from threading import RLock
+from threading import Lock, RLock
 
 # USE WHEN REGISTERING TRACES
 REGISTER_LOCK = RLock()

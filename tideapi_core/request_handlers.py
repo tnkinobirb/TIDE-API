@@ -60,9 +60,7 @@ def persist_bundle(bundle_name:str, replace:bool=False) -> dict[str, str]:
     if not path.exists():
         raise APILookupError(f"Cannot find bundle {bundle_name} in BUNDLE_DIR")
 
-    bundle = validate_tide_bundle(path)
-
-    init_store().set(bundle_name, bundle, replace=replace)
+    init_store().set(bundle_name, path, replace=replace)
 
     return {'result': bundle_name}
 

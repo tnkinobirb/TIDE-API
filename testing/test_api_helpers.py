@@ -175,7 +175,7 @@ class TestFastAPIHelpers:
         assert pre_ware == post_ware
         assert pre_exc == post_exc
 
-    def test_endpoint_registration_atomicity_on_tide_api_failure(self) -> None:
+    def test_endpoint_registration_atomicity_on_tideapi_failure(self) -> None:
         endpoint_handler = {
             'path':'/',
             'endpoint': lambda: {'result': 'example'},

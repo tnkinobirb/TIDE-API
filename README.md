@@ -124,7 +124,7 @@ $Env:ENV_VAR='false'
 | Variable | Default | Behaviour |
 |---|---|---|
 | `TIDEAPI_BUNDLE_DIR` | `TIDE-API/bundles` | Directory containing local bundle files |
-| `TIDEAPI_DATABASE_PATH` | `TIDE-API/data/bundles.db` | Full path of the SQLite database |
+| `TIDEAPI_SQLITE_DB_PATH` | `TIDE-API/data/bundles.db` | Full path of the SQLite database |
 | `TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING` | `true` | Include and persist local bundles while loading traces |
 
 For example:

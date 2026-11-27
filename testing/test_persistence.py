@@ -1,3 +1,4 @@
+import json
 import pytest
 import sqlite3
 from pathlib import Path
@@ -124,51 +125,54 @@ class TestStoreInit:
 
 class TestClassOperations:
 
-    def test_store_set(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_store_set(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, tide_bundle: str) -> None:
         db = init_test_apistore(monkeypatch, tmp_path)
 
         assert not db.bundles()
 
-        db.set("example.json", "1234")
+        db.set("example.json", tide_bundle)
         assert db.bundles() == ["example.json"]
-        assert db.get("example.json") == "1234"
+        assert db.get("example.json") == tide_bundle
 
         # invalid inputs
         with pytest.raises(DataValidationError):
             db.set(1, lambda: None)
 
         # test get still works correctly after failure
-        assert db.get("example.json") == "1234"
+        assert db.get("example.json") == tide_bundle
 
         # duplicate registration
         with pytest.raises(AlreadyRegisteredError):
-            db.set("example.json", "1234")
-        assert db.get("example.json") == "1234"
+            db.set("example.json", tide_bundle)
+        assert db.get("example.json") == tide_bundle
 
         with pytest.raises(AlreadyRegisteredError):
-            db.set("example.json", "0")
-        assert db.get("example.json") == "1234"
+            db.set("example.json", tide_bundle)
+        assert db.get("example.json") == tide_bundle
 
         assert db.bundles() == ["example.json"]
-        assert db.get("example.json") == "1234"
+        assert db.get("example.json") == tide_bundle
 
         # replace existing registration
-        db.set("example.json", "4321", replace=True)
+        modified_tide_bundle = json.loads(tide_bundle)
+        modified_tide_bundle['manifest']['run']['trace']['name'] == 'new'
+        serialised_bundle = json.dumps(modified_tide_bundle)
+        db.set("example.json", serialised_bundle, replace=True)
         assert db.bundles() == ["example.json"]
-        assert db.get("example.json") == "4321"
+        assert db.get("example.json") == serialised_bundle
 
-    def test_store_get(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_store_get(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, tide_bundle: str) -> None:
         db = init_test_apistore(monkeypatch, tmp_path)
 
         assert not db.bundles()
 
         # Init store
-        db.set("example.json", "1234")
+        db.set("example.json", tide_bundle)
 
         assert db.bundles() == ["example.json"]
 
         # Test get
-        assert db.get("example.json") == "1234"
+        assert db.get("example.json") == tide_bundle
 
         # Non-existent target
         with pytest.raises(APIStoreLookupError):
@@ -178,18 +182,18 @@ class TestClassOperations:
         with pytest.raises(DataValidationError):
             db.get(lambda: None)
 
-    def test_store_pop(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_store_pop(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, tide_bundle: str) -> None:
         db = init_test_apistore(monkeypatch, tmp_path)
 
         assert not db.bundles()
 
         # Init store
-        db.set("example.json", "1234")
+        db.set("example.json", tide_bundle)
 
         assert db.bundles() == ["example.json"]
 
         # Test
-        assert db.pop("example.json") == "1234"
+        assert db.pop("example.json") == tide_bundle
 
         assert not db.bundles()
 
@@ -201,13 +205,13 @@ class TestClassOperations:
         with pytest.raises(DataValidationError):
             db.pop(lambda: None)
 
-    def test_store_exists(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_store_exists(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, tide_bundle: str) -> None:
         db = init_test_apistore(monkeypatch, tmp_path)
 
         assert not db.bundles()
 
         # Init store
-        db.set("example.json", "1234")
+        db.set("example.json", tide_bundle)
 
         assert db.bundles() == ["example.json"]
 
@@ -220,12 +224,12 @@ class TestClassOperations:
         with pytest.raises(DataValidationError):
             db.exists(lambda: None)
 
-    def test_bundles_listing(self, monkeypatch: pytest.MonkeyPatch, tmp_path_factory: TempPathFactory) -> None:
+    def test_bundles_listing(self, monkeypatch: pytest.MonkeyPatch, tmp_path_factory: TempPathFactory, tide_bundle: str) -> None:
         bundle_path = tmp_path_factory.mktemp('bundles')
         db = init_test_apistore(monkeypatch, bundle_path)
 
         # Init store
-        db.set("example.json", "1234")
+        db.set("example.json", tide_bundle)
 
         assert list(db.bundles()) == ['example.json']
 

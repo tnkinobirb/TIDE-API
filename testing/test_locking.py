@@ -8,6 +8,7 @@ from threading import Lock, RLock, Barrier, Event
 from concurrent.futures import ThreadPoolExecutor
 
 from tideapi_core import request_handlers
+from tideapi_core.persistence import tideapi_store
 from tideapi.handlers import persist_bundle, load_trace
 from tideapi.exceptions import AlreadyRegisteredError
 from tideapi.persistence import TIDEAPIStore
@@ -381,7 +382,7 @@ class TestFunctionLocks:
 
     def test_persist_bundle_barrier(self, monkeypatch: pytest.MonkeyPatch, tide_bundle: str) -> None:
         self.assert_empty_state()
-        monkeypatch.setattr(request_handlers, "validate_tide_bundle", lambda path: tide_bundle)
+        monkeypatch.setattr(tideapi_store, "validate_tide_bundle", lambda path: tide_bundle)
         barrier = Barrier(2, timeout=5)
 
         empty_snap, store = self.helper_init_store()
@@ -424,7 +425,11 @@ class TestFunctionLocks:
         with ThreadPoolExecutor(max_workers=2) as threadpool:
             a = threadpool.submit(persist_bundle, "example.json")
 
-            assert a_attempting.wait(timeout=5)
+            if not a_attempting.wait(timeout=5):
+                if a.done():
+                    a.result()  # Re-raises the worker's original exception
+
+                pytest.fail("Worker never attempted to acquire the lock")
             assert a_acquired.wait(timeout=5)
 
             monkeypatch.setattr(store, "lock", ObservableLock(store_lock, b_attempting, b_acquired, b_released, contended=b_contended))

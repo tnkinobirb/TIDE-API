@@ -1,20 +1,25 @@
 '''
     TIDE-API PERSISTENCE INTERFACE
 
-    STORE: SQLITE3
+    SUPPORTED STORES: 
+    - SQLITE3
+    - POSTGRESQL
 
     ROLE: PROVIDE AN INTERFACE TO ENABLE THE PERSISTENCE OF TIDE OBJECTS
 
     SUPPORTED TIDE OBJECTS:
         - BUNDLE (as JSON string)
 '''
-
+import os
+from dotenv import load_dotenv
+import psycopg
 import sqlite3
 from pathlib import Path
-from threading import RLock
+from threading import Lock
 from contextlib import contextmanager
 from collections.abc import Generator
-from tideapi_core.config import DB_PATH as DEFAULT_DB_PATH
+from tideapi_core.helpers.native import validate_tide_bundle, validate_bundle_name
+from tideapi_core.config import SQLITE_DB_PATH as DEFAULT_DB_PATH
 from tideapi_core.exceptions import (
     APIStoreLookupError,
     DataValidationError,
@@ -22,9 +27,46 @@ from tideapi_core.exceptions import (
     InvalidAPIStoreConfigurationError,
 )
 
+class TIDEPSQLStore:
+    '''
+    TIDE-API POSTGRESQL PERSISTENCE INTERFACE
+        Initialises or connects to a TIDEAPIStore sqlite3 `bundles.db` database.
+        Provides CRUD operations over persisted TIDE objects supported by TIDE-API.
+
+        SUPPORTED TIDE OBJECTS:
+            - BUNDLE (as JSON string)
+
+        TIDEAPIStore's default database path may be configured
+    '''
+    def __init__(self):
+        load_dotenv()
+    
+    @staticmethod
+    def get_cursor(conn: psycopg.Connection) -> psycopg.Cursor:
+        '''Retrieve postgresql database cursor'''
+        if not isinstance(conn, psycopg.Connection):
+            raise TypeError("Invalid connection type")
+        return conn.cursor()
+
+    def connect_to_bundle_db(self) -> psycopg.Connection:
+        '''Initialise connection to sqlite3 database'''
+        print('doing')
+        password = os.environ["TIDEAPI_PSQL_DB_PASSWORD"]
+        conn = psycopg.connect(
+            host="127.0.0.1",
+            port=5432,
+            dbname="bundles",
+            user="tideapi",
+            password=password,
+            connect_timeout=5
+        )   
+        print('connected')
+
+        return conn
+
 class TIDEAPIStore:
     '''
-    TIDE-API PERSISTENCE INTERFACE
+    TIDE-API SQLite PERSISTENCE INTERFACE
         Initialises or connects to a TIDEAPIStore sqlite3 `bundles.db` database.
         Provides CRUD operations over persisted TIDE objects supported by TIDE-API.
 
@@ -39,7 +81,7 @@ class TIDEAPIStore:
         '''Initialise sqlite3 database and associated lock'''
         self.DB_PATH = self.__class__.DB_PATH if db_path is None else db_path
         self.create_bundle_store()
-        self.lock = RLock()
+        self.lock = Lock()
 
     def connect_to_bundle_db(self) -> sqlite3.Connection:
         '''Initialise connection to sqlite3 database'''
@@ -94,8 +136,11 @@ class TIDEAPIStore:
                         f"e = {type(e).__name__} {str(e)}. \n"
                     )
 
-    def set(self, bundle_name: str, bundle: str, replace:bool=False) -> None:
+    def set(self, bundle_name: str, bundle: Path | str, replace:bool=False) -> None:
         '''Persist a .json string as a bundle keyed via bundle_name'''
+        validate_bundle_name(bundle_name)
+        bundle = validate_tide_bundle(bundle)
+
         if not isinstance(replace, bool):
             raise DataValidationError("Store.set(replace=...) must be a bool!")
 

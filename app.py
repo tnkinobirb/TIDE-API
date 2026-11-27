@@ -41,7 +41,7 @@ To setup a TIDE-API instance:
                     export TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING='false'
 
         PATHS:
-            TIDEAPI_DATABASE_PATH: Where TIDEAPIStore's database should be created, or is located.
+            TIDEAPI_SQLITE_DB_PATH: Where TIDEAPIStore's database should be created, or is located.
             TIDEAPI_BUNDLE_DIR: The directory in which local bundle .json files are discovered.
 
         BEHAVIOUR CONFIGS:
