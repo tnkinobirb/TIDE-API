@@ -140,3 +140,4 @@ def sample_endpoints() -> list[dict[str, Any]]:
             'methods':{'GET', }
         }
     ]
+

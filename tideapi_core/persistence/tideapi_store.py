@@ -11,12 +11,14 @@
         - BUNDLE (as JSON string)
 '''
 import os
-from dotenv import load_dotenv
-import psycopg
 import sqlite3
+import psycopg
+from dotenv import load_dotenv
 from pathlib import Path
 from threading import Lock
 from contextlib import contextmanager
+from psycopg_pool import ConnectionPool
+from psycopg.errors import UniqueViolation
 from collections.abc import Generator
 from tideapi_core.helpers.native import validate_tide_bundle, validate_bundle_name
 from tideapi_core.config import SQLITE_DB_PATH as DEFAULT_DB_PATH
@@ -30,7 +32,7 @@ from tideapi_core.exceptions import (
 class TIDEPSQLStore:
     '''
     TIDE-API POSTGRESQL PERSISTENCE INTERFACE
-        Initialises or connects to a TIDEAPIStore sqlite3 `bundles.db` database.
+        Initialises or connects to a TIDEAPIStore postgresql `bundles.db` database.
         Provides CRUD operations over persisted TIDE objects supported by TIDE-API.
 
         SUPPORTED TIDE OBJECTS:
@@ -40,30 +42,197 @@ class TIDEPSQLStore:
     '''
     def __init__(self):
         load_dotenv()
-    
+        
+        self.pool = ConnectionPool(
+            conninfo="host=127.0.0.1 port=5432 dbname=bundles user=tideapi",
+            kwargs={
+                "password": os.environ["TIDEAPI_PSQL_DB_PASSWORD"],
+                "connect_timeout": 5,
+            },
+            min_size=1,
+            max_size=10,
+            open=True,
+        )
+
+        try:
+            with self.apistore as conn:
+                self._assert_expected_api_store_config(conn)
+        except Exception:
+            self.pool.close()
+            raise
+
     @staticmethod
     def get_cursor(conn: psycopg.Connection) -> psycopg.Cursor:
         '''Retrieve postgresql database cursor'''
         if not isinstance(conn, psycopg.Connection):
             raise TypeError("Invalid connection type")
         return conn.cursor()
+    
+    @property
+    @contextmanager
+    def apistore(self) -> Generator[psycopg.Connection, None, None]:
+        with self.pool.connection() as conn:
+            yield conn
+        
+    def set(self, bundle_name: str, bundle: Path | str, replace:bool=False) -> None:
+        '''Persist a .json string as a bundle keyed via bundle_name'''
+        validate_bundle_name(bundle_name)
+        bundle = validate_tide_bundle(bundle)
 
-    def connect_to_bundle_db(self) -> psycopg.Connection:
-        '''Initialise connection to sqlite3 database'''
-        print('doing')
-        password = os.environ["TIDEAPI_PSQL_DB_PASSWORD"]
-        conn = psycopg.connect(
-            host="127.0.0.1",
-            port=5432,
-            dbname="bundles",
-            user="tideapi",
-            password=password,
-            connect_timeout=5
-        )   
-        print('connected')
+        if not isinstance(replace, bool):
+            raise DataValidationError("Store.set(replace=...) must be a bool!")
 
-        return conn
+        if any(not isinstance(inp, str) for inp in [bundle_name, bundle]):
+            raise DataValidationError("Store.set() only accepts str values")
 
+        with self.apistore as conn:
+            try:
+                if replace:
+                    self.get_cursor(conn).execute(
+                        "INSERT INTO tide.bundles (bundle_name, bundle) VALUES (%s, %s)"
+                        " ON CONFLICT (bundle_name) DO UPDATE SET bundle = EXCLUDED.bundle", 
+                        (bundle_name, bundle)
+                    )
+                else:
+                    self.get_cursor(conn).execute(
+                        "INSERT INTO bundles (bundle_name, bundle)" \
+                        "VALUES (%s, %s)", (bundle_name, bundle)
+                    )
+            except UniqueViolation as e:
+                raise AlreadyRegisteredError(
+                    f"{bundle_name} is already registered in bundles.db" \
+                    "\n Please use .set(replace=True) to override bundle contents"
+                ) from e
+
+    def get(self, bundle_name: str) -> str:
+        '''Retrieve a persisted bundle via bundle_name'''
+        if not isinstance(bundle_name, str):
+            raise DataValidationError("Store.get() only accepts str values")
+        with self.apistore as conn:
+            cursor = self.get_cursor(conn).execute(
+                "SELECT bundle FROM bundles WHERE bundle_name=%s LIMIT 1", (bundle_name,)
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise APIStoreLookupError(f"bundle_name {bundle_name} not found!")
+            return row[0]
+
+    def pop(self, bundle_name: str) -> str:
+        '''Retrieve and remove a persisted bundle from the database via bundle_name'''
+        if not isinstance(bundle_name, str):
+            raise DataValidationError("Store.pop() only accepts str values")
+
+        with self.apistore as conn:
+            cursor = self.get_cursor(conn).execute(
+                "DELETE FROM bundles WHERE bundle_name=%s RETURNING bundle", (bundle_name, )
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise APIStoreLookupError(f"bundle_name {bundle_name} not found!")
+            return row[0]
+
+    def exists(self, bundle_name: str) -> bool:
+        '''Confirm whether a bundle is persisted via bundle_name'''
+        if not isinstance(bundle_name, str):
+            raise DataValidationError("Store.exists() only accepts str values")
+
+        with self.apistore as conn:
+            cursor = self.get_cursor(conn).execute(
+                "SELECT EXISTS(SELECT 1 FROM bundles WHERE bundle_name = %s)", (bundle_name, )
+            )
+            exists = bool(cursor.fetchone()[0])
+            return exists
+
+    def bundles(self) -> list[str]:
+        '''List available persisted bundles via their associated bundle_name'''
+        with self.apistore as conn:
+            cursor = self.get_cursor(conn).execute("SELECT bundle_name FROM bundles")
+            row = cursor.fetchall()
+            if row is None:
+                return []
+
+            return [tpl[0] for tpl in row]
+
+    def close(self) -> None:
+        self.pool.close()
+
+    def _assert_expected_api_store_config(self, conn: psycopg.Connection) -> None:
+        '''Assert the expected configuration of the PostgreSQL bundle store'''
+        def require(condition: bool, message: str) -> None:
+            if not condition:
+                raise ValueError(message)
+
+        cols = []
+        try:
+            cursor = self.get_cursor(conn)
+
+            cursor.execute("SELECT current_database()")
+            require(cursor.fetchone()[0] == 'bundles', "Database name must be bundles")
+
+            cursor.execute(
+                "SELECT c.relname, c.relkind "
+                "FROM pg_catalog.pg_class AS c "
+                "JOIN pg_catalog.pg_namespace AS n "
+                "ON n.oid = c.relnamespace "
+                "WHERE n.nspname = 'tide' "
+                "AND c.relkind IN ('r', 'p', 'f')"
+            )
+            tables = cursor.fetchall()
+
+            require(len(tables) == 1, f"len(tables) {len(tables)} == 1")
+            require(tables[0] == ('bundles', 'r'), "Expected bundles table")
+
+            cursor.execute("SELECT * FROM tide.bundles LIMIT 0")
+            cols = [col[0] for col in cursor.description]
+
+            require(len(cols) == 2, "len(cols) == 2")
+            require(cols[0] == "bundle_name", 'cols[0] == "bundle_name"')
+            require(cols[1] == "bundle", 'cols[1] == "bundle"')
+
+            expected_cols = [
+                (1, 'bundle_name', 'text', 'NO', None, None),
+                (2, 'bundle', 'text', 'NO', None, None)
+            ]
+
+            cursor.execute(
+                "SELECT ordinal_position, column_name, data_type, "
+                "is_nullable, column_default, domain_name "
+                "FROM information_schema.columns "
+                "WHERE table_schema = 'tide' "
+                "AND table_name = 'bundles' "
+                "ORDER BY ordinal_position"
+            )
+            cols = cursor.fetchall()
+
+            require(len(cols) == len(expected_cols), "Column length mismatch")
+            require(cols == expected_cols, f"Column mismatch: {cols}")
+
+            cursor.execute(
+                "SELECT a.attname "
+                "FROM pg_catalog.pg_constraint AS c "
+                "JOIN pg_catalog.pg_attribute AS a "
+                "ON a.attrelid = c.conrelid "
+                "AND a.attnum = ANY(c.conkey) "
+                "WHERE c.conrelid = 'tide.bundles'::regclass "
+                "AND c.contype = 'p'"
+            )
+            primary_key = cursor.fetchall()
+
+            require(
+                primary_key == [('bundle_name',)],
+                f"Primary key mismatch: {primary_key}"
+            )
+
+        except Exception as e:
+            raise InvalidAPIStoreConfigurationError(
+                "PostgreSQL bundle store configuration is invalid. \n"
+                "Expects a store with a `bundles` table containing "
+                "`bundle_name` and `bundle` cols ONLY! \n"
+                "This error is used to avoid accidental data corruption \n"
+                f"e = {type(e).__name__} {str(e)}"
+                f"{f'. \n cols = {cols}.' if cols else '.'}"
+            ) from e
+        
 class TIDEAPIStore:
     '''
     TIDE-API SQLite PERSISTENCE INTERFACE
