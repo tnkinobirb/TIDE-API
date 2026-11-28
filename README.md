@@ -45,9 +45,9 @@ Copy `.env.template` to `.env` and `postgres.env.template` to `postgres.env`, th
 docker compose up --build
 ```
 
-The API uses SQLite by default. To use PostgreSQL (`TIDEPSQLStore`), copy `tideapi.env.template` to `tideapi.env` and set `TIDEAPI_STORE_BACKEND=postgresql` before starting the API. Docker Compose supplies the container hostname `postgres`; when running the API on the host, the default PostgreSQL hostname is `127.0.0.1`.
+The API uses SQLite by default. To use PostgreSQL (`TIDEPSQLStore`), copy `tideapi.env.template` to `tideapi.env` and set `TIDEAPI_STORE_BACKEND=postgresql` before starting the API. Docker Compose supplies the container hostname `postgres`. When running the API on the host, the default PostgreSQL hostname is `127.0.0.1`.
 
-The optional `tideapi.env` file in Compose requires Docker Compose v2.24 or newer. Start PostgreSQL and wait until it is ready before starting the API with PostgreSQL selected.
+The optional `tideapi.env` file in Compose requires Docker Compose v2.24 or newer; otherwise, ensure it exists.
 
 To start only PostgreSQL for development:
 
