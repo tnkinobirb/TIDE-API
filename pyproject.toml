@@ -1,6 +1,6 @@
 [project]
 name = "tide-api"
-version = "0.0.3"
+version = "0.0.4"
 description = "FastAPI interface for TIDE execution traces"
 readme = "README.md"
 authors = [
@@ -12,6 +12,8 @@ license-files = ["LICENCE.md"]
 
 dependencies = [
     "fastapi[standard]>=0.112.0",
+    "psycopg[binary,pool]>=3.2",
+    "python-dotenv>=1.0",
     "tide-tooling @ git+https://github.com/tnkinobirb/TIDE-Tooling.git@8c7edc17a50deb4bf312e113b726a3bcadbc1bc9",
 ]
 

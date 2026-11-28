@@ -12,12 +12,7 @@ This is intended to be used only as a local service for listing, loading and inv
 git clone https://github.com/tnkinobirb/TIDE-API.git
 cd TIDE-API
 
-# With venv
 python -m venv .venv
-
-# With Docker:
-docker compose up --build
-
 ```
 Activate the environment:
 
@@ -42,6 +37,24 @@ Open the interactive API documentation at:
 http://127.0.0.1:8000/docs
 ```
 
+## Docker
+
+Copy `.env.template` to `.env` and `postgres.env.template` to `postgres.env`, then set the application database password and PostgreSQL admin password in the respective files before starting a new PostgreSQL instance. Keep these files private.
+
+```bash
+docker compose up --build
+```
+
+The API uses SQLite by default. To use PostgreSQL (`TIDEPSQLStore`), copy `tideapi.env.template` to `tideapi.env` and set `TIDEAPI_STORE_BACKEND=postgresql` before starting the API. Docker Compose supplies the container hostname `postgres`. When running the API on the host, the default PostgreSQL hostname is `127.0.0.1`.
+
+The `tideapi.env` configuration file is optional. Running TIDE-API through Docker requires Docker Compose v2.24 or newer.
+
+To start only PostgreSQL for development:
+
+```bash
+docker compose up -d postgres
+```
+
 ## First use
 
 Place a TIDE bundle in the default `bundles/` directory:
@@ -60,7 +73,7 @@ fastapi run app.py
 
 On startup, TIDE-API:
 
-1. Creates or validates `bundles.db`.
+1. Creates or validates the SQLite store, or connects to and validates the provisioned PostgreSQL store.
 2. Loads bundles already persisted in the database.
 3. Discovers valid local bundles when local loading is enabled.
 4. Persists discovered bundles as JSON strings.
@@ -80,8 +93,9 @@ curl http://127.0.0.1:8000/traces/example.json
 
 ## Storage behaviour
 
-TIDE-API stores bundle JSON in a configurable SQLite `bundles.db` database.
+TIDE-API stores bundle JSON in a configurable SQLite `bundles.db` database by default. Since v0.0.3, the default location is `data/bundles.db`; move an existing root-level `bundles.db` there if you wish to retain its contents.
 
+- Select PostgreSQL via `TIDEAPI_STORE_BACKEND=postgresql`. This uses a separate database; switching backends does not migrate existing bundles.
 - Existing databases are validated before use.
 - Bundle persistence rejects duplicates by default; replacement must be explicitly enabled.
 - Loaded traces are held in memory for the lifetime of the process.
@@ -109,7 +123,9 @@ See `/docs` for full request parameters, query types and response schemas.
 
 ## Configuration
 
-Configuration is read from environment variables when the application starts.
+Configuration is read from environment variables when the application starts. Copy `tideapi.env.template` to `tideapi.env` to configure the defaults, or set environment variables directly when running the API on the host. Changes require restarting the application.
+
+Docker Compose reads `tideapi.env` if present and overrides the bundle path, SQLite path and PostgreSQL hostname for the container.
 
 Set environment variables via:
 
@@ -123,8 +139,11 @@ $Env:ENV_VAR='false'
 
 | Variable | Default | Behaviour |
 |---|---|---|
+| `TIDEAPI_STORE_BACKEND` | `sqlite3` | Persistence backend: `sqlite3` or `postgresql` |
+| `TIDEAPI_PSQL_HOST` | `127.0.0.1` | PostgreSQL hostname (`postgres` in Docker Compose) |
+| `TIDEAPI_PSQL_DB_PASSWORD` | — | PostgreSQL application role password (in `.env` or the environment) |
 | `TIDEAPI_BUNDLE_DIR` | `TIDE-API/bundles` | Directory containing local bundle files |
-| `TIDEAPI_DATABASE_PATH` | `TIDE-API/data/bundles.db` | Full path of the SQLite database |
+| `TIDEAPI_SQLITE_DB_PATH` | `TIDE-API/data/bundles.db` | Full path of the SQLite database |
 | `TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING` | `true` | Include and persist local bundles while loading traces |
 
 For example:
@@ -143,3 +162,17 @@ $Env:TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING='false'
 python -m pip install ".[test]"
 python -m pytest -q
 ```
+
+PostgreSQL integration tests are opt-in. With the database running and `.env` configured, enable them and run:
+
+```bash
+# Linux
+export TIDEAPI_TEST_PSQL='1'
+
+# Windows PowerShell
+$env:TIDEAPI_TEST_PSQL='1'
+
+python -m pytest testing/test_psql_store.py -v
+```
+
+Run these tests against a development database without concurrent external writers.

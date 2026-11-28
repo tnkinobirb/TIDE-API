@@ -9,9 +9,9 @@ from fastapi import Request, status
 from fastapi.responses import RedirectResponse
 
 from tide_tooling import TIDE
-from tideapi_core.config import BUNDLE_DIR, INCLUDE_BUNDLE_DIR_WHEN_LOADING
+from tideapi_core.config import BUNDLE_DIR, INCLUDE_BUNDLE_DIR_WHEN_LOADING, STORE_BACKEND
 from tideapi_core.helpers.native import validate_tide_bundle
-from tideapi_core.persistence.tideapi_store import TIDEAPIStore
+from tideapi_core.persistence.tideapi_store import TIDEAPIStore, TIDEPSQLStore
 from tideapi_core.locks import (
     REGISTER_LOCK,
     STORE_INIT_LOCK,
@@ -29,19 +29,28 @@ from tideapi_core.exceptions import (
     APILookupError,
     TraceLookupError,
     DataValidationError,
+    InvalidAPIStoreConfigurationError,
 )
 
 # STORE INITIALISER
-def init_store() -> TIDEAPIStore:
+def init_store() -> TIDEAPIStore | TIDEPSQLStore:
     '''
-    Initialise and retrieve the global TIDEAPIStore instance.
+    Initialise and retrieve the global persistence store instance.
     If an instance is already present, retrieve the existing instance instead.
     '''
     global STORE
 
     with STORE_INIT_LOCK:
         if STORE is None:
-            STORE = TIDEAPIStore()
+            if STORE_BACKEND == 'sqlite3':
+                STORE = TIDEAPIStore()
+            elif STORE_BACKEND == 'postgresql':
+                STORE = TIDEPSQLStore()
+            else:
+                raise InvalidAPIStoreConfigurationError(
+                    f"Invalid TIDEAPI_STORE_BACKEND: {STORE_BACKEND}. "
+                    "Expected 'sqlite3' or 'postgresql'."
+                )
     return STORE
 
 # REDIRECTS
@@ -60,9 +69,7 @@ def persist_bundle(bundle_name:str, replace:bool=False) -> dict[str, str]:
     if not path.exists():
         raise APILookupError(f"Cannot find bundle {bundle_name} in BUNDLE_DIR")
 
-    bundle = validate_tide_bundle(path)
-
-    init_store().set(bundle_name, bundle, replace=replace)
+    init_store().set(bundle_name, path, replace=replace)
 
     return {'result': bundle_name}
 

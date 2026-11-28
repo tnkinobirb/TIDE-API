@@ -70,7 +70,13 @@ class TestLifespan:
         with monkeypatch.context() as m:
             m.setattr(request_handlers, 'TRACES', {'example.json': tide_bundle})
             m.setattr(request_handlers, 'STORE', TIDEAPIStore(tmp_dir() / 'bundles.db'))
-            request_handlers.STORE.set('store_invalid.json', '1234')
+
+            # Bypass store validation to simulate an invalid persisted bundle.
+            with request_handlers.STORE.apistore as conn:
+                conn.execute(
+                    "INSERT INTO bundles (bundle_name, bundle) VALUES (?, ?)",
+                    ('store_invalid.json', '1234')
+                )
 
             tmp_path = tmp_dir()
             valid_path = (tmp_path / 'example.json')

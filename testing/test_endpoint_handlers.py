@@ -40,7 +40,7 @@ def assert_endpoint(endpoint:dict[str, Any], path:str, methods:list[str]|set[str
     assert endpoint['endpoint'] is function
     assert endpoint['path'] == path
 
-def assert_is_tide_api_response(json:dict[str, Any]) -> None:
+def assert_is_tideapi_response(json:dict[str, Any]) -> None:
     json_len = len(json)
     assert json_len == 1
     assert 'result' in json
@@ -69,7 +69,7 @@ def endpoint_tester(method:str, endpoint:dict[str, Any], status_code:int, expect
     assert response.status_code == status_code
 
     rjson = response.json()
-    assert_is_tide_api_response(rjson)
+    assert_is_tideapi_response(rjson)
     if compare_result:
         assert rjson == expected_result
     return client, response
@@ -408,7 +408,7 @@ class TestAPIHelperEndpoints:
             assert response.status_code == 200
             assert response.json() == {"result": []}
 
-    def test_persisted_bundles(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory) -> None:
+    def test_persisted_bundles(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory, tide_bundle: str) -> None:
 
         # Test no bundles
         with monkeypatch.context() as m:
@@ -419,7 +419,7 @@ class TestAPIHelperEndpoints:
             store = init_store()
 
             assert not store.bundles()
-            store.set("example.json", "1234")
+            store.set("example.json", tide_bundle)
             bundles = store.bundles()
             assert len(bundles) == 1
             assert bundles[0] == "example.json"
@@ -509,9 +509,9 @@ class TestAPIHelperEndpoints:
 
     def test_load_trace(self, endpoints: dict[str, dict[str, Any]], monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory, tide_bundle:str, bundle_dir:Path) -> None:
 
-        def init_context(m: pytest.MonkeyPatch, db_path: Path) -> TIDEAPIStore:
+        def init_context(m: pytest.MonkeyPatch, DB_PATH: Path) -> TIDEAPIStore:
             m.setattr(request_handlers, "TRACES", {})
-            m.setattr(request_handlers.TIDEAPIStore, "DB_PATH", db_path)
+            m.setattr(request_handlers.TIDEAPIStore, "DB_PATH", DB_PATH)
             m.setattr(request_handlers, "STORE", None)
             return init_store()
 
@@ -557,10 +557,25 @@ class TestAPIHelperEndpoints:
             with pytest.raises(DataValidationError):
                 load_trace('path/to/dir.json')
 
-            store.set("example.json", '{"fake_bundle": "lol"}')
-            assert len(store.bundles()) == 1
+            
+            with pytest.raises(DataValidationError):
+                store.set("example.json", '{"fake_bundle": "lol"}')
+            assert len(store.bundles()) == 0
 
             assert_empty_context()
+            with pytest.raises(APILookupError):
+                load_trace("example.json")
+
+            assert_empty_context()
+
+            # Bypass store validation to simulate an invalid persisted bundle.
+            with store.apistore as conn:
+                conn.execute(
+                    "INSERT INTO bundles (bundle_name, bundle) VALUES (?, ?)",
+                    ("example.json", '{"fake_bundle": "lol"}')
+                )
+            assert store.bundles() == ["example.json"]
+
             with pytest.raises(TypeError):
                 load_trace("example.json")
 
@@ -769,7 +784,13 @@ class TestAPIHelperEndpoints:
                 m.setattr(request_handlers, 'BUNDLE_DIR', test_dir)
                 m.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_WHEN_LOADING', True)
 
-                store.set('store_invalid.json', '1234')
+                # Bypass store validation to simulate an invalid persisted bundle.
+                with store.apistore as conn:
+                    conn.execute(
+                        "INSERT INTO bundles (bundle_name, bundle) VALUES (?, ?)",
+                        ('store_invalid.json', '1234')
+                    )
+
                 pre_state = dict(request_handlers.TRACES)
 
                 # TEST INVALID WITH ignore_invalid=False
@@ -810,7 +831,11 @@ class TestAPIHelperEndpoints:
                 m.setattr(request_handlers, 'INCLUDE_BUNDLE_DIR_WHEN_LOADING', False)
 
                 store.set('a_valid.json', tide_bundle)
-                store.set('z_invalid.json', '1234')
+                with store.apistore as conn:
+                    conn.execute(
+                        "INSERT INTO bundles (bundle_name, bundle) VALUES (?, ?)",
+                        ('z_invalid.json', '1234')
+                    )
 
                 # Force valid-before-invalid ordering to exercise rollback
                 m.setattr(

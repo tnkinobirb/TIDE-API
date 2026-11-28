@@ -1,25 +1,33 @@
 '''
     TIDE-API LIFESPAN MANAGEMENT
 '''
-from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from fastapi.concurrency import run_in_threadpool
+from contextlib import asynccontextmanager
+from tideapi_core import request_handlers
 from tideapi.handlers import initialise_traces_from_bundles
+from fastapi.concurrency import run_in_threadpool
+from tideapi_core.persistence.tideapi_store import TIDEPSQLStore
 
 # TIDE-API FASTAPI-LIFESPAN FUNCTION
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     '''Lifespan manager function for TIDE-API FastAPI application instances'''
-    registered, failed  = await run_in_threadpool(
-        initialise_traces_from_bundles,
-        ignore_invalid=True
-    )
+    try:
+        registered, failed = await run_in_threadpool(
+            initialise_traces_from_bundles,
+            ignore_invalid=True
+        )
 
-    app.state.init = {
-        "traces": {
-            "registered": registered,
-            "failed": failed
+        app.state.init = {
+            "traces": {
+                "registered": registered,
+                "failed": failed
+            }
         }
-    }
 
-    yield
+        yield
+
+    finally:
+        if isinstance(request_handlers.STORE, TIDEPSQLStore):
+            await run_in_threadpool(request_handlers.STORE.close)
+            request_handlers.STORE = None

@@ -14,16 +14,19 @@ def validate_bundle_name(bundle_name: str) -> str:
     '''Validate a bundle_name string'''
     prohibited = ['/', '\\']
 
-    if not bundle_name.endswith(".json") or any(p in bundle_name for p in prohibited):
+    if not isinstance(bundle_name, str) or not bundle_name.endswith(".json") or any(p in bundle_name for p in prohibited):
         raise DataValidationError(f"Invalid bundle name {bundle_name}")
 
     return bundle_name
 
 # Bundle validation
-def validate_tide_bundle(path: Path) -> str:
+def validate_tide_bundle(to_validate: Path | str) -> str:
     '''Validate structure of a TIDE bundle.json file via Path'''
     try:
-        raw = path.read_text(encoding="utf-8")
+        if isinstance(to_validate, Path):
+            raw = to_validate.read_text(encoding="utf-8")
+        else:
+            raw = to_validate
         bundle = json.loads(raw)
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise DataValidationError("Invalid TIDE bundle JSON") from exc
@@ -32,7 +35,7 @@ def validate_tide_bundle(path: Path) -> str:
         if not condition:
             raise DataValidationError(message)
 
-    require(isinstance(bundle, dict), "Bundle must be a JSON object")
+    require(isinstance(bundle, dict), f"Bundle must be a JSON object, was {type(bundle)}")
     require(
         set(bundle) == {"manifest", "cas"},
         "Invalid bundle root structure"

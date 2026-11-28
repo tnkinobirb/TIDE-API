@@ -41,8 +41,12 @@ To setup a TIDE-API instance:
                     export TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING='false'
 
         PATHS:
-            TIDEAPI_DATABASE_PATH: Where TIDEAPIStore's database should be created, or is located.
+            TIDEAPI_SQLITE_DB_PATH: Where TIDEAPIStore's database should be created, or is located.
             TIDEAPI_BUNDLE_DIR: The directory in which local bundle .json files are discovered.
+
+        STORE CONFIGS:
+            TIDEAPI_STORE_BACKEND: 'sqlite3'|'postgresql' (default: 'sqlite3')
+            TIDEAPI_PSQL_HOST: PostgreSQL hostname (default: '127.0.0.1')
 
         BEHAVIOUR CONFIGS:
             TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING: 'true'|'false'
