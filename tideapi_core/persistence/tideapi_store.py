@@ -32,7 +32,7 @@ from tideapi_core.exceptions import (
 class TIDEPSQLStore:
     '''
     TIDE-API POSTGRESQL PERSISTENCE INTERFACE
-        Connects to a provisioned PostgreSQL `bundles` database.
+        Connects to a PostgreSQL `bundles` database.
         Provides CRUD operations over persisted TIDE objects supported by TIDE-API.
 
         SUPPORTED TIDE OBJECTS:
