@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import pytest
 import sqlite3
 
@@ -13,6 +15,13 @@ from tideapi.handlers import persist_bundle, load_trace
 from tideapi.exceptions import AlreadyRegisteredError
 from tideapi.persistence import TIDEAPIStore
 from tideapi_core.request_handlers import init_store
+
+def lock_is_held(lock: Lock | RLock) -> bool:
+    if lock.acquire(blocking=False):
+        lock.release()
+        return False
+    return True
+
 
 class ObservableLock:
     def __init__(self, original_lock: Lock | RLock, attempting: Event, acquired: Event, released_event: Event, continue_event: Event | None = None, contended: Event | None = None) -> None:
@@ -341,11 +350,11 @@ class TestFunctionLocks:
 
             # assert `a` has acquired its lock
             assert a_acquired.is_set()
-            assert lock.locked()
+            assert lock_is_held(lock)
 
             # assert `b` has attempted lock acquisition but does not yet own it.
             assert not b_acquired.is_set()
-            assert lock.locked()
+            assert lock_is_held(lock)
 
             # allow `a` to complete registration and release the lock.
             allow_a_to_continue.set()

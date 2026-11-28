@@ -1,6 +1,6 @@
 [project]
 name = "tide-api"
-version = "0.0.4"
+version = "0.0.5"
 description = "FastAPI interface for TIDE execution traces"
 readme = "README.md"
 authors = [

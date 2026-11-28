@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.0.5 (pre-alpha)
+
+- Added GitHub Actions CI.
+- Adjust lock assertions for Python 3.12 compatibility.
+
 ## v0.0.4 (pre-alpha)
 
 Persistence:
