@@ -12,12 +12,7 @@ This is intended to be used only as a local service for listing, loading and inv
 git clone https://github.com/tnkinobirb/TIDE-API.git
 cd TIDE-API
 
-# With venv
 python -m venv .venv
-
-# With Docker:
-docker compose up --build
-
 ```
 Activate the environment:
 
@@ -40,6 +35,22 @@ Open the interactive API documentation at:
 
 ```text
 http://127.0.0.1:8000/docs
+```
+
+## Docker
+
+Copy `.env.template` to `.env` and `postgres.env.template` to `postgres.env`, then set the application database password and PostgreSQL admin password in the respective files before starting a new PostgreSQL instance. Keep these files private.
+
+```bash
+docker compose up --build
+```
+
+The API still uses SQLite by default. PostgreSQL is available as an initial standalone persistence implementation (`TIDEPSQLStore`), with its database provisioned by Docker Compose. The store currently connects to PostgreSQL from the host at `127.0.0.1:5432`.
+
+To start only PostgreSQL for development:
+
+```bash
+docker compose up -d postgres
 ```
 
 ## First use
@@ -80,7 +91,7 @@ curl http://127.0.0.1:8000/traces/example.json
 
 ## Storage behaviour
 
-TIDE-API stores bundle JSON in a configurable SQLite `bundles.db` database.
+TIDE-API stores bundle JSON in a configurable SQLite `bundles.db` database by default. Since v0.0.3, the default location is `data/bundles.db`; move an existing root-level `bundles.db` there if you wish to retain its contents.
 
 - Existing databases are validated before use.
 - Bundle persistence rejects duplicates by default; replacement must be explicitly enabled.
@@ -143,3 +154,17 @@ $Env:TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING='false'
 python -m pip install ".[test]"
 python -m pytest -q
 ```
+
+PostgreSQL integration tests are opt-in. With the database running and `.env` configured, enable them and run:
+
+```bash
+# Linux
+export TIDEAPI_TEST_PSQL='1'
+
+# Windows PowerShell
+$env:TIDEAPI_TEST_PSQL='1'
+
+python -m pytest testing/test_psql_store.py -v
+```
+
+Run these tests against a development database without concurrent external writers.

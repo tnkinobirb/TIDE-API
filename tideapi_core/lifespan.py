@@ -13,7 +13,7 @@ from tideapi_core.persistence.tideapi_store import TIDEPSQLStore
 async def lifespan(app: FastAPI):
     '''Lifespan manager function for TIDE-API FastAPI application instances'''
     try:
-        registered, failed  = await run_in_threadpool(
+        registered, failed = await run_in_threadpool(
             initialise_traces_from_bundles,
             ignore_invalid=True
         )
@@ -26,8 +26,7 @@ async def lifespan(app: FastAPI):
         }
 
         yield
-        
+
     finally:
         if isinstance(request_handlers.STORE, TIDEPSQLStore):
             await run_in_threadpool(request_handlers.STORE.close)
-

@@ -1,7 +1,7 @@
 '''
     TIDE-API PERSISTENCE INTERFACE
 
-    SUPPORTED STORES: 
+    SUPPORTED STORES:
     - SQLITE3
     - POSTGRESQL
 
@@ -32,17 +32,15 @@ from tideapi_core.exceptions import (
 class TIDEPSQLStore:
     '''
     TIDE-API POSTGRESQL PERSISTENCE INTERFACE
-        Initialises or connects to a TIDEAPIStore postgresql `bundles.db` database.
+        Connects to a provisioned PostgreSQL `bundles` database.
         Provides CRUD operations over persisted TIDE objects supported by TIDE-API.
 
         SUPPORTED TIDE OBJECTS:
             - BUNDLE (as JSON string)
-
-        TIDEAPIStore's default database path may be configured
     '''
     def __init__(self):
         load_dotenv()
-        
+
         self.pool = ConnectionPool(
             conninfo="host=127.0.0.1 port=5432 dbname=bundles user=tideapi",
             kwargs={
@@ -63,17 +61,17 @@ class TIDEPSQLStore:
 
     @staticmethod
     def get_cursor(conn: psycopg.Connection) -> psycopg.Cursor:
-        '''Retrieve postgresql database cursor'''
+        '''Retrieve PostgreSQL database cursor'''
         if not isinstance(conn, psycopg.Connection):
             raise TypeError("Invalid connection type")
         return conn.cursor()
-    
+
     @property
     @contextmanager
     def apistore(self) -> Generator[psycopg.Connection, None, None]:
         with self.pool.connection() as conn:
             yield conn
-        
+
     def set(self, bundle_name: str, bundle: Path | str, replace:bool=False) -> None:
         '''Persist a .json string as a bundle keyed via bundle_name'''
         validate_bundle_name(bundle_name)
@@ -90,17 +88,17 @@ class TIDEPSQLStore:
                 if replace:
                     self.get_cursor(conn).execute(
                         "INSERT INTO tide.bundles (bundle_name, bundle) VALUES (%s, %s)"
-                        " ON CONFLICT (bundle_name) DO UPDATE SET bundle = EXCLUDED.bundle", 
+                        " ON CONFLICT (bundle_name) DO UPDATE SET bundle = EXCLUDED.bundle",
                         (bundle_name, bundle)
                     )
                 else:
                     self.get_cursor(conn).execute(
-                        "INSERT INTO bundles (bundle_name, bundle)" \
+                        "INSERT INTO tide.bundles (bundle_name, bundle) "
                         "VALUES (%s, %s)", (bundle_name, bundle)
                     )
             except UniqueViolation as e:
                 raise AlreadyRegisteredError(
-                    f"{bundle_name} is already registered in bundles.db" \
+                    f"{bundle_name} is already registered in tide.bundles" \
                     "\n Please use .set(replace=True) to override bundle contents"
                 ) from e
 
@@ -110,7 +108,7 @@ class TIDEPSQLStore:
             raise DataValidationError("Store.get() only accepts str values")
         with self.apistore as conn:
             cursor = self.get_cursor(conn).execute(
-                "SELECT bundle FROM bundles WHERE bundle_name=%s LIMIT 1", (bundle_name,)
+                "SELECT bundle FROM tide.bundles WHERE bundle_name=%s LIMIT 1", (bundle_name,)
             )
             row = cursor.fetchone()
             if row is None:
@@ -124,7 +122,7 @@ class TIDEPSQLStore:
 
         with self.apistore as conn:
             cursor = self.get_cursor(conn).execute(
-                "DELETE FROM bundles WHERE bundle_name=%s RETURNING bundle", (bundle_name, )
+                "DELETE FROM tide.bundles WHERE bundle_name=%s RETURNING bundle", (bundle_name, )
             )
             row = cursor.fetchone()
             if row is None:
@@ -138,7 +136,7 @@ class TIDEPSQLStore:
 
         with self.apistore as conn:
             cursor = self.get_cursor(conn).execute(
-                "SELECT EXISTS(SELECT 1 FROM bundles WHERE bundle_name = %s)", (bundle_name, )
+                "SELECT EXISTS(SELECT 1 FROM tide.bundles WHERE bundle_name = %s)", (bundle_name, )
             )
             exists = bool(cursor.fetchone()[0])
             return exists
@@ -146,7 +144,7 @@ class TIDEPSQLStore:
     def bundles(self) -> list[str]:
         '''List available persisted bundles via their associated bundle_name'''
         with self.apistore as conn:
-            cursor = self.get_cursor(conn).execute("SELECT bundle_name FROM bundles")
+            cursor = self.get_cursor(conn).execute("SELECT bundle_name FROM tide.bundles")
             row = cursor.fetchall()
             if row is None:
                 return []
@@ -230,9 +228,9 @@ class TIDEPSQLStore:
                 "`bundle_name` and `bundle` cols ONLY! \n"
                 "This error is used to avoid accidental data corruption \n"
                 f"e = {type(e).__name__} {str(e)}"
-                f"{f'. \n cols = {cols}.' if cols else '.'}"
+                + (f". \n cols = {cols}." if cols else ".")
             ) from e
-        
+
 class TIDEAPIStore:
     '''
     TIDE-API SQLite PERSISTENCE INTERFACE
@@ -317,7 +315,7 @@ class TIDEAPIStore:
             raise DataValidationError("Store.set() only accepts str values")
 
         with self.lock:
-    	    with self.apistore as conn:
+            with self.apistore as conn:
                 # exists
                 cursor = self.get_cursor(conn).execute(
                     "SELECT EXISTS(SELECT 1 FROM bundles WHERE bundle_name = ?)", (bundle_name, )
@@ -342,7 +340,7 @@ class TIDEAPIStore:
                 self.get_cursor(conn).execute(
                     "INSERT INTO bundles (bundle_name, bundle)" \
                     "VALUES (?, ?)", (bundle_name, bundle)
-	            )
+                )
 
     def get(self, bundle_name: str) -> str:
         '''Retrieve a persisted bundle via bundle_name'''
@@ -441,5 +439,6 @@ class TIDEAPIStore:
                 "`bundles.db` exists but its configuration is invalid. \n" \
                 "Expects a store with a `bundles` table containing `bundle_name` and `bundle` cols ONLY! \n" \
                 "This error is used to avoid accidental data corruption \n" \
-                f"e = {type(e).__name__} {str(e)}{f'. \n cols = {cols}.' if cols else '.'}" \
+                f"e = {type(e).__name__} {str(e)}"
+                + (f". \n cols = {cols}." if cols else ".")
             )
