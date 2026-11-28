@@ -6,6 +6,7 @@ from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from tideapi.persistence import TIDEAPIStore
 from tideapi.handlers import ENDPOINT_HANDLERS
+from tideapi_core import request_handlers
 from tide_tooling import TIDE, Trace
 from pathlib import Path
 
@@ -37,6 +38,11 @@ def handle_val_exc(request: Request, exc: ValueError) -> JSONResponse:
     )
 
 # STORAGE | DIRECTORY FIXTURES
+@pytest.fixture(autouse=True)
+def default_test_store_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    '''Keep existing API tests isolated from the configured PostgreSQL backend.'''
+    monkeypatch.setattr(request_handlers, 'STORE_BACKEND', 'sqlite3')
+
 @pytest.fixture
 def api_db(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory) -> TIDEAPIStore:
     monkeypatch.setattr(TIDEAPIStore, 'DB_PATH', tmp_path_factory.mktemp('tmp') / 'bundles.db')

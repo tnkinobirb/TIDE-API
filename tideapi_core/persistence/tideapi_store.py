@@ -22,6 +22,7 @@ from psycopg.errors import UniqueViolation
 from collections.abc import Generator
 from tideapi_core.helpers.native import validate_tide_bundle, validate_bundle_name
 from tideapi_core.config import SQLITE_DB_PATH as DEFAULT_DB_PATH
+from tideapi_core.config import PSQL_HOST
 from tideapi_core.exceptions import (
     APIStoreLookupError,
     DataValidationError,
@@ -42,8 +43,9 @@ class TIDEPSQLStore:
         load_dotenv()
 
         self.pool = ConnectionPool(
-            conninfo="host=127.0.0.1 port=5432 dbname=bundles user=tideapi",
+            conninfo="port=5432 dbname=bundles user=tideapi",
             kwargs={
+                "host": PSQL_HOST,
                 "password": os.environ["TIDEAPI_PSQL_DB_PASSWORD"],
                 "connect_timeout": 5,
             },

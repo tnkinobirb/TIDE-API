@@ -45,7 +45,9 @@ Copy `.env.template` to `.env` and `postgres.env.template` to `postgres.env`, th
 docker compose up --build
 ```
 
-The API still uses SQLite by default. PostgreSQL is available as an initial standalone persistence implementation (`TIDEPSQLStore`), with its database provisioned by Docker Compose. The store currently connects to PostgreSQL from the host at `127.0.0.1:5432`.
+The API uses SQLite by default. To use PostgreSQL (`TIDEPSQLStore`), copy `tideapi.env.template` to `tideapi.env` and set `TIDEAPI_STORE_BACKEND=postgresql` before starting the API. Docker Compose supplies the container hostname `postgres`; when running the API on the host, the default PostgreSQL hostname is `127.0.0.1`.
+
+The optional `tideapi.env` file in Compose requires Docker Compose v2.24 or newer. Start PostgreSQL and wait until it is ready before starting the API with PostgreSQL selected.
 
 To start only PostgreSQL for development:
 
@@ -71,7 +73,7 @@ fastapi run app.py
 
 On startup, TIDE-API:
 
-1. Creates or validates `bundles.db`.
+1. Creates or validates the SQLite store, or connects to and validates the provisioned PostgreSQL store.
 2. Loads bundles already persisted in the database.
 3. Discovers valid local bundles when local loading is enabled.
 4. Persists discovered bundles as JSON strings.
@@ -93,6 +95,7 @@ curl http://127.0.0.1:8000/traces/example.json
 
 TIDE-API stores bundle JSON in a configurable SQLite `bundles.db` database by default. Since v0.0.3, the default location is `data/bundles.db`; move an existing root-level `bundles.db` there if you wish to retain its contents.
 
+- Select PostgreSQL via `TIDEAPI_STORE_BACKEND=postgresql`. This uses a separate database; switching backends does not migrate existing bundles.
 - Existing databases are validated before use.
 - Bundle persistence rejects duplicates by default; replacement must be explicitly enabled.
 - Loaded traces are held in memory for the lifetime of the process.
@@ -120,7 +123,9 @@ See `/docs` for full request parameters, query types and response schemas.
 
 ## Configuration
 
-Configuration is read from environment variables when the application starts.
+Configuration is read from environment variables when the application starts. Copy `tideapi.env.template` to `tideapi.env` to configure the defaults, or set environment variables directly when running the API on the host. Changes require restarting the application.
+
+Docker Compose reads `tideapi.env` if present and overrides the bundle path, SQLite path and PostgreSQL hostname for the container.
 
 Set environment variables via:
 
@@ -134,6 +139,9 @@ $Env:ENV_VAR='false'
 
 | Variable | Default | Behaviour |
 |---|---|---|
+| `TIDEAPI_STORE_BACKEND` | `sqlite3` | Persistence backend: `sqlite3` or `postgresql` |
+| `TIDEAPI_PSQL_HOST` | `127.0.0.1` | PostgreSQL hostname (`postgres` in Docker Compose) |
+| `TIDEAPI_PSQL_DB_PASSWORD` | — | PostgreSQL application role password (in `.env` or the environment) |
 | `TIDEAPI_BUNDLE_DIR` | `TIDE-API/bundles` | Directory containing local bundle files |
 | `TIDEAPI_SQLITE_DB_PATH` | `TIDE-API/data/bundles.db` | Full path of the SQLite database |
 | `TIDEAPI_INCLUDE_BUNDLE_DIR_WHEN_LOADING` | `true` | Include and persist local bundles while loading traces |

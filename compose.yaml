@@ -1,9 +1,13 @@
 services:
   tide-api:
     build: .
+    env_file:
+      - path: tideapi.env
+        required: false
     environment:
       TIDEAPI_BUNDLE_DIR: /app/bundles
       TIDEAPI_SQLITE_DB_PATH: /app/data/bundles.db
+      TIDEAPI_PSQL_HOST: postgres
       TIDEAPI_PSQL_DB_PASSWORD: ${TIDEAPI_PSQL_DB_PASSWORD}
     ports:
       - "127.0.0.1:8000:8000"

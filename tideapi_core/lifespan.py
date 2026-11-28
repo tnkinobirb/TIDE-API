@@ -30,3 +30,4 @@ async def lifespan(app: FastAPI):
     finally:
         if isinstance(request_handlers.STORE, TIDEPSQLStore):
             await run_in_threadpool(request_handlers.STORE.close)
+            request_handlers.STORE = None

@@ -19,6 +19,7 @@ ENV/
 .env.*
 !.env.template
 postgres.env
+tideapi.env
 
 # Python tooling and test caches
 .pytest_cache/

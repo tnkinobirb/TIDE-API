@@ -8,6 +8,7 @@ __pycache__
 .env
 .env.*
 postgres.env
+tideapi.env
 
 data/
 bundles/*

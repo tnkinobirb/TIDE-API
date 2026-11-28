@@ -4,7 +4,10 @@
 
 Persistence:
 - Initial containerised PostgreSQL support through `TIDEPSQLStore`, with connection pooling and integration tests.
-- SQLite remains the default persistence backend for the API.
+- Added `TIDEAPI_STORE_BACKEND` to select the persistence backend. `sqlite3` is the default.
+
+Configuration:
+- Added `tideapi.env.template` for TIDE-API environment settings.
 
 ## v0.0.3 (pre-alpha)
 
